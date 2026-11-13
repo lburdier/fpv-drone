@@ -30,7 +30,15 @@ class ReplayBackend:
 
     def sticks(self):
         v = self._values()
-        return (max(0.0, min(1.0, v[0])), v[1], v[2], v[3]) if len(v) == 4 else (v[3], 0.0, 0.0, 0.0)
+        if self.take["mode"] == 'MOTION':
+            return (v[3], 0.0, 0.0, 0.0)
+        return (max(0.0, min(1.0, v[0])), v[1], v[2], v[3])
+
+    def trigger(self):
+        if self.take["mode"] == 'MOTION':
+            return 0.0
+        v = self._values()
+        return v[4] if len(v) > 4 else 0.0
 
     def motion(self):
         return self._values()

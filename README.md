@@ -1,4 +1,4 @@
-# FPV Drone 2.9.0 – extension Blender 4.2 → 5.x (testée 5.3)
+# FPV Drone 2.9.1 – extension Blender 4.2 → 5.x (testée 5.3)
 
 Pilote une caméra comme un drone FPV (radiocommande, manette ou clavier) et enregistre le vol en keyframes.
 Réécriture complète de *Quadcopter FPV Simulator* (WizardOfRobots, 2021), sous licence GPL-3.0-or-later.
@@ -6,10 +6,21 @@ Réécriture complète de *Quadcopter FPV Simulator* (WizardOfRobots, 2021), sou
 Testée sur Blender **5.0.1, 5.1.2 et 5.3.0**. QR code : bibliothèque *QR Code generator* de Project Nayuki (MIT), incluse.
 
 ## Installation
-Glisse `fpv_drone-2.9.0.zip` dans la fenêtre de Blender, ou *Edit › Preferences › Get Extensions › ⌄ › Install from Disk*.
+Glisse `fpv_drone-2.9.1.zip` dans la fenêtre de Blender, ou *Edit › Preferences › Get Extensions › ⌄ › Install from Disk*.
 Le panneau apparaît dans la Vue 3D › barre latérale (N) › onglet **FPV Drone**.
 
 Aucune installation pip ni pygame n'est nécessaire sous Windows.
+
+## Nouveautés 2.9.1
+- **R2 = vitesse** (mode Angle) : la pression de la gâchette règle une vitesse de croisière. À moitié enfoncée, le drone se stabilise à la moitié de la *vitesse max gâchette* (80 km/h par défaut, panneau Manette) ; à fond, il atteint la vitesse max. L2 freine puis recule de la même façon. L'OSD affiche la vitesse visée (« R2 45 km/h »). En mode Fluide, R2 à fond correspond déjà à la vitesse max du mode.
+- **Le mode Angle tient son cap** : le drone ne tourne plus tout seul quand on passe brutalement de l'avant à l'arrière.
+- **Prop-wash plus juste** : il s'estompe quand on avance vite (l'air propre arrive par le côté), et secoue surtout le roulis et le tangage, presque plus le lacet.
+- Changer le multiplicateur de vitesse en vol (molette, R1 / L1) ne fait plus bouger l'altitude tenue.
+- **Préréglage de drone « Arcade Freestyle Actual 145 533 »** (bouton à côté de *Type*) : un freestyle léger et direct.
+  - Modèle arcade : rotations quasi immédiates, ni latence moteur ni turbulence.
+  - Rates Actual 145 / 533 °/s, expo 0,5 sur les trois axes.
+  - Poussée/poids 12,2 : vol stationnaire à environ 29 % de gaz, environ 100 km/h en pointe.
+  - Caméra inclinée à 30°.
 
 ## Nouveautés 2.9
 - **Manette PS4 / PS5** (entrée *Manette PS4 / PS5*, ou préréglage rapide **PS4/PS5**) : DualShock 4 et DualSense, en USB ou en Bluetooth, lues directement, sans DS4Windows ni Steam.

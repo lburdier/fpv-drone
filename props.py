@@ -113,6 +113,9 @@ class FPV_Settings(bpy.types.PropertyGroup):
                                description="R2 (RT) flies forward, L2 (LT) backward: the more you press, the faster. "
                                            "Angle mode; combine with Altitude Hold to cruise level")
     axis_forward: IntProperty(name="Forward Axis", default=5, min=0, max=7, description="R2 / RT on a PS or Xbox pad")
+    trigger_speed: FloatProperty(name="Trigger Max Speed (km/h)", default=80.0, min=1.0, soft_max=200.0, max=2000.0,
+                                 description="Angle mode: speed with R2 fully pressed. The pressure sets the speed "
+                                             "(half pressed = half the speed), held like a cruise control")
     axis_backward: IntProperty(name="Backward Axis", default=4, min=0, max=7, description="L2 / LT on a PS or Xbox pad")
     # ---------------------------------------------------------------- flight
     flight_mode: EnumProperty(name="Mode", default='ACRO', items=[

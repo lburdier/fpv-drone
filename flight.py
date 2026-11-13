@@ -209,9 +209,10 @@ class Drone:
         st = st * abs(st) * 0.4 + st * 0.6                      # finer around the centre
         if st == 0.0:
             # stick centred: lock the height where the drone is (a little ahead of the climb / descent)
+            # (stored in scene units: changing the Speed Multiplier in flight must not move the held height)
             if self.alt_hold is None:
-                self.alt_hold = self.pos.z * p.mpu + v.z * 0.25
-            vz_des = max(-p.climb_rate, min(p.climb_rate, (self.alt_hold - self.pos.z * p.mpu) * 1.6))
+                self.alt_hold = self.pos.z + v.z * 0.25 / p.mpu
+            vz_des = max(-p.climb_rate, min(p.climb_rate, (self.alt_hold - self.pos.z) * p.mpu * 1.6))
         else:
             self.alt_hold = None
             vz_des = st * p.climb_rate
@@ -265,9 +266,12 @@ class Drone:
             if p.floor_z is not None and p.ground_effect > 0.0:
                 h = max(0.0, (self.pos.z - p.floor_z) * p.mpu_real)
                 thrust *= 1.0 + p.ground_effect * exp(-h / 0.25)
-            # prop-wash: descending into your own disturbed air
+            # prop-wash: descending into your own disturbed air. With speed across the rotor disc the wash is left
+            # behind (braking hard at speed is clean air), so it fades with that in-plane airflow
             sink = -v_axial
-            self.wash = max(0.0, min(1.0, (sink - 1.5) / 6.0)) * (0.35 + 0.65 * (1.0 - self.motor)) * p.prop_wash
+            v_perp = (v_air - up * v_axial).length
+            clean = 1.0 / (1.0 + (v_perp / 4.0) ** 2)
+            self.wash = max(0.0, min(1.0, (sink - 1.5) / 6.0)) * (0.35 + 0.65 * (1.0 - self.motor)) * p.prop_wash * clean
             # body-frame anisotropic drag
             qi = self.q.conjugated()
             vb = qi @ v_air
@@ -294,7 +298,8 @@ class Drone:
             if p.turbulence > 0.0 or self.wash > 0.0:
                 tu, wn = self._turb, self._washn
                 n = Vector((tu[0].step(dt), tu[1].step(dt), tu[2].step(dt))) * (p.turbulence * 1.6)
-                n += Vector((wn[0].step(dt), wn[1].step(dt), wn[2].step(dt))) * (self.wash * 9.0)
+                # prop-wash shakes roll / pitch; it barely yaws the quad
+                n += Vector((wn[0].step(dt), wn[1].step(dt), wn[2].step(dt) * 0.25)) * (self.wash * 9.0)
                 self.w += n * dt * 10.0
         else:
             self.w += (wt - self.w) * (1.0 - exp(-dt / 0.035))
@@ -302,11 +307,15 @@ class Drone:
         if ang > 1e-9:
             self.q = (self.q @ Quaternion(self.w.normalized(), ang)).normalized()
         if p.mode == 'ANGLE':
-            fwd = self.q @ _Y
-            if abs(fwd.z) < 0.95:
-                hh = atan2(-fwd.x, fwd.y)
+            # the flight controller HOLDS the heading: small drifts are corrected, not accepted (accepting them made
+            # the quad turn by itself on hard pitch changes). Only a big knock (impact, flip) re-bases the heading.
+            # heading measured on the body's RIGHT axis: it does not move when the quad pitches (the nose does)
+            rgt = self.q @ _X
+            if abs(rgt.z) < 0.95:
+                hh = atan2(rgt.y, rgt.x)
                 d = (hh - self.heading + 3.14159265) % 6.2831853 - 3.14159265
-                self.heading += d * min(1.0, dt * 4.0)
+                if abs(d) > 0.6:
+                    self.heading += d * min(1.0, dt * 4.0)
 
         v += acc * dt
         self.vel = v / mpu
@@ -469,12 +478,11 @@ class CinePilot:
         # speeds asked by the sticks (m/s); throttle centred = hold the height
         vmax = s.cine_speed / 3.6
         climb = apply_deadband(thr * 2.0 - 1.0, 0.06)
-        z_m = d.pos.z * mpu
         v = d.vel * mpu
         if climb == 0.0:
-            if self.alt is None:
-                self.alt = z_m + v.z * tau
-            vz = max(-p.climb_rate, min(p.climb_rate, (self.alt - z_m) * 1.2))
+            if self.alt is None:                        # held height in scene units (Speed Multiplier safe)
+                self.alt = d.pos.z + v.z * tau / mpu
+            vz = max(-p.climb_rate, min(p.climb_rate, (self.alt - d.pos.z) * mpu * 1.2))
         else:
             self.alt = None
             vz = climb * p.climb_rate

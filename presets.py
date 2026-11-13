@@ -105,6 +105,51 @@ def install_bundled():
                 f.write(_render(vals, _BUNDLE_VERSION))
         except OSError:
             pass
+    _install_drone_presets()
+
+
+# bundled drone presets: values written in the DRONE_VALUES order (the type first, then the coefficients)
+BUNDLED_DRONE = {
+    # light arcade freestyle: 0.5 kg, 60 N max thrust (TWR 12.2), quadratic-like throttle (hover at 28.6 % stick),
+    # isotropic drag 0.5 * 1.225 * 1.2 * 0.1 m2 / 0.5 kg = 0.147 /m (about 100 km/h), near-instant rotations,
+    # Actual rates 145 / 533 deg/s with expo 0.5 on the three axes, 30 deg camera, no turbulence / prop-wash
+    "Arcade_Freestyle_Actual_145_533": dict(
+        drone_class='CUSTOM', use_specs=False, spec_mass=500.0, spec_thrust=1529.0, spec_motors=4,
+        spec_wheelbase=220.0, spec_inertia=0.6, spec_area_front=1000.0, spec_area_top=1000.0,
+        thrust_to_weight=12.2, drag_xy=0.0639, drag_z=0.0639, drag_linear=0.0, use_realism=False,
+        throttle_expo=0.78, prop_wash=0.0, turbulence=0.0, ground_effect=0.0, battery_sag=0.0,
+        rates_type='ACTUAL', act_center=145.0, act_max=533.0, act_expo=0.5,
+        act_yaw_center=145.0, act_yaw_max=533.0, act_yaw_expo=0.5, cam_tilt=0.5236, speed_boost=1.0),
+}
+
+
+def _render_drone(vals):
+    order = [v[2:] for v in DRONE_VALUES]                     # "s.drone_class" -> "drone_class"
+    keys = [k for k in order if k in vals] + [k for k in vals if k not in order]
+    return "\n".join([_MARK + str(_BUNDLE_VERSION), "import bpy", _S] +
+                     ["s.%s = %r" % (k, vals[k]) for k in keys]) + "\n"
+
+
+def _install_drone_presets():
+    try:
+        d = _user_dir(DRONE_DIR)
+    except Exception:
+        return
+    for name, vals in BUNDLED_DRONE.items():
+        path = os.path.join(d, name + ".py")
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    cur = f.read()
+            except OSError:
+                continue
+            if not cur.startswith(_MARK) or cur.startswith(_MARK + str(_BUNDLE_VERSION) + "\n"):
+                continue                                       # the user's own file, or already up to date
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(_render_drone(vals))
+        except OSError:
+            pass
 
 
 class FPV_MT_drone_presets(bpy.types.Menu):

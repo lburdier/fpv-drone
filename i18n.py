@@ -790,4 +790,9 @@ FR = {
     'Smooth mode: camera pitch, level horizon (0 = straight ahead, negative = looking down)': 'Mode fluide : inclinaison de la caméra, horizon droit (0 = droit devant, négatif = vers le bas)',
     'Smooth mode: the sticks set the speed': 'Mode fluide : les sticks donnent la vitesse',
     'Triggers work in Angle and Smooth modes': 'Les gâchettes fonctionnent en modes Angle et Fluide',
+    # ---------------------------------------------- 2.9.1 (trigger speed)
+    'Trigger Max Speed (km/h)': 'Vitesse max gâchette (km/h)',
+    'Angle mode: speed with R2 fully pressed. The pressure sets the speed (half pressed = half the speed), held like a cruise control': 'Mode Angle : vitesse avec R2 enfoncée à fond. La pression règle la vitesse (à moitié = moitié de la vitesse), tenue comme un régulateur',
+    'R2 %d km/h': 'R2 %d km/h',
+    "Smooth mode: R2 fully pressed = the smooth mode's Max Speed": 'Mode fluide : R2 à fond = la vitesse max du mode fluide',
 }

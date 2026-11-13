@@ -90,6 +90,9 @@ def draw_osd(d, W, H, scale=1.0):
     if d["time_scale"] != 1.0:
         _text(W - 170 * s, yb, T("TIME x%.2f") % d["time_scale"], fs, (1, 0.85, 0.3, 0.95))
         yb -= 22 * s
+    if d.get("trig") is not None:
+        _text(W - 170 * s, yb, T("R2 %d km/h") % round(d["trig"]), fs, (1.0, 0.8, 0.4, 0.95))
+        yb -= 22 * s
     if d.get("climb"):
         _text(W - 170 * s, yb, T("ALT HOLD  %+.1f m/s") % d.get("vz", 0.0), fs, (0.6, 1.0, 0.7, 0.9))
         yb -= 22 * s

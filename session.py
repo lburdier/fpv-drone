@@ -3,7 +3,7 @@
 writes the object transform and bakes keyframes at exact frame times. Independent from the modal operator
 so it can be driven (and tested) without a UI."""
 import time
-from math import sin, atan2, exp
+from math import sin, cos, atan2, exp
 import bpy
 import numpy as np
 from mathutils import Vector, Euler, Quaternion
@@ -30,7 +30,7 @@ COUNTDOWN = 3.0
 
 # recorded stick inputs: custom properties of the drone, keyed (constant) at every input change -> editable in
 # the Graph Editor, then "Re-fly Take" replays them through the same flight code with the current settings
-STICK_CH = ("throttle", "yaw", "pitch", "roll")
+STICK_CH = ("throttle", "yaw", "pitch", "roll", "trigger")
 MOTION_CH = ("heading", "look", "tilt", "accel", "rotate")
 INPUT_PATHS = {'["fpv_in_%s"]' % n for n in STICK_CH + MOTION_CH}
 
@@ -219,6 +219,10 @@ class FlightSession:
         self.t_state = 0.0
         self.sim_t = 0.0
         self.sticks = (0.0, 0.0, 0.0, 0.0)
+        self.trig = 0.0                     # R2 - L2, -1..1 (Angle mode: a forward speed command)
+        self.trig_f = 0.0                   # same, smoothed like the sticks
+        self.trig_i = 0.0                   # speed controller integral (pitch units)
+        self.trig_target = None             # km/h shown on the OSD while a trigger is pressed
         self.raw = [0.0] * 8
         self.crashed_t = 0.0
         self.motion = (0.0, 0.0, 0.0, 0.0, 0.0)
@@ -318,6 +322,7 @@ class FlightSession:
             if st is None:
                 return None
             self.sticks = st
+            self.trig = b.trigger() if hasattr(b, "trigger") else 0.0
             self.raw = [st[3], st[2], st[0] * 2 - 1, st[1], 0, 0, 0, 0]
             return st
         if isinstance(b, inputs.KeyboardBackend):      # fixed layout, ignore the joystick mapping
@@ -343,10 +348,15 @@ class FlightSession:
         yaw = flight.apply_deadband(ax(s.axis_yaw, s.inv_yaw), db)
         pitch = flight.apply_deadband(ax(s.axis_pitch, s.inv_pitch), db)
         roll = flight.apply_deadband(ax(s.axis_roll, s.inv_roll), db)
+        self.trig = 0.0
         if s.use_triggers and s.flight_mode in ('ANGLE', 'CINE'):   # R2 forward / L2 backward, by how far pressed
             fwd = (ax(s.axis_forward, False) + 1.0) * 0.5
             back = (ax(s.axis_backward, False) + 1.0) * 0.5
-            pitch = max(-1.0, min(1.0, pitch + flight.apply_deadband(fwd, 0.04) - flight.apply_deadband(back, 0.04)))
+            trig = flight.apply_deadband(fwd, 0.04) - flight.apply_deadband(back, 0.04)
+            if s.flight_mode == 'CINE':                 # smooth mode: the pitch stick already IS a speed
+                pitch = max(-1.0, min(1.0, pitch + trig))
+            else:
+                self.trig = trig                        # Angle: speed command, handled in the physics step
         self.sticks = (max(0.0, min(1.0, thr)), yaw, pitch, roll)
         return self.sticks
 
@@ -430,6 +440,9 @@ class FlightSession:
                 a1[i] += (sticks[i] - a1[i]) * rc_k
                 a2[i] += (a1[i] - a2[i]) * rc_k
             thr, yaw, pitch, roll = a2
+            self.trig_f += (self.trig - self.trig_f) * rc_k
+            if self.s.flight_mode == 'ANGLE' and not crashed:
+                pitch = self._trigger_pitch(pitch, p)
             if crashed:
                 flight.step_free(self.drone, p, SUBSTEP)
             elif motion:
@@ -488,7 +501,51 @@ class FlightSession:
             m = tuple(self.motion) + (0.0,) * (5 - len(self.motion))
             self.in_buf.append((real_dt, m[:5]))
         else:
-            self.in_buf.append((real_dt, tuple(self.sticks)))
+            self.in_buf.append((real_dt, tuple(self.sticks) + (self.trig,)))
+
+    def _trigger_pitch(self, pitch, p):
+        """R2 / L2 in Angle mode: the pressure sets a forward (or backward) SPEED, held like a cruise control.
+        Half pressed = half of Trigger Max Speed. The pitch stick still adds on top."""
+        tr = self.trig_f
+        if abs(tr) < 0.01:
+            self.trig_i = 0.0
+            self.trig_target = None
+            self.trig_vprev = None
+            self.trig_a = 0.0
+            return pitch
+        c = tr * abs(tr) * 0.3 + tr * 0.7                       # a bit finer at light pressure
+        v_des = c * self.s.trigger_speed / 3.6                  # m/s (pilot physics: the Speed Multiplier applies)
+        d = self.drone
+        h = d.heading
+        fwd = Vector((-sin(h), cos(h), 0.0))
+        v_f = (d.vel * p.mpu).dot(fwd)
+        err = v_des - v_f
+        # feed-forward: the tilt that balances the drag at the asked speed (tan(tilt) = drag / g), so the speed
+        # settles fast; the integral only trims what the model misses
+        va = abs(v_des)
+        if p.realism:
+            th = atan2(p.drag_xy * va * va + p.drag_l * va, flight.G)
+            for _ in range(2):
+                ct, st = cos(th), sin(th)
+                th = atan2(va * va * (p.drag_xy * ct * ct + p.drag_z * st * st) + p.drag_l * va, flight.G)
+        else:
+            th = atan2(p.drag_xy * 2.3 * va * va + p.drag_l * va, flight.G)
+        ff = min(1.0, th / max(1e-3, p.max_angle))
+        ff = ff if v_des >= 0.0 else -ff
+        # damping on the forward acceleration: the quad starts to level out before it reaches the speed
+        # (the attitude needs a moment to change), so it does not brake past the target
+        prev = getattr(self, "trig_vprev", None)
+        a_f = (v_f - prev) / SUBSTEP if prev is not None else 0.0
+        self.trig_vprev = v_f
+        self.trig_a = getattr(self, "trig_a", 0.0)
+        self.trig_a += (a_f - self.trig_a) * 0.05
+        cmd = pitch + ff + err * 0.09 - self.trig_a * 0.03 + self.trig_i
+        # slow integral (the feed-forward does the work), frozen while the command is saturated: no wind-up,
+        # so no overshoot / slow oscillation after a big change of speed
+        if abs(cmd) < 1.0 or (cmd > 0.0) != (err > 0.0):
+            self.trig_i = max(-0.3, min(0.3, self.trig_i + err * SUBSTEP * 0.08))
+        self.trig_target = abs(c) * self.s.trigger_speed * p.boost
+        return max(-1.0, min(1.0, cmd))
 
     def event(self, kind):
         """Reset / fire / recenter: done now, and remembered for Re-fly."""
@@ -780,6 +837,7 @@ class FlightSession:
             "look": self.pilot.look if self.pilot else 0.0,
             "boost": self.s.speed_boost, "boost_age": time.perf_counter() - self.boost_clock,
             "climb": (self.s.throttle_mode == 'CLIMB' and self.s.flight_mode != 'MOTION') or self.s.flight_mode == 'CINE',
+            "trig": self.trig_target,
             "vz": d.vel.z * p_mpu,
             "cull": self.culler.stats() if self.culler is not None else None,
             "proj": self.proj.fired if self.proj is not None else None,

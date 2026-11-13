@@ -161,6 +161,10 @@ class FPV_PT_controller(_Sub, bpy.types.Panel):
             row = box.row(align=True)
             row.prop(s, "axis_forward", text=T("R2 axis"), translate=False)
             row.prop(s, "axis_backward", text=T("L2 axis"), translate=False)
+            if s.flight_mode == 'ANGLE':
+                box.prop(s, "trigger_speed")
+            elif s.flight_mode == 'CINE':
+                _label(box, "Smooth mode: R2 fully pressed = the smooth mode's Max Speed", 'INFO')
             if s.flight_mode not in ('ANGLE', 'CINE'):
                 _label(box, "Triggers work in Angle and Smooth modes", 'ERROR')
         L.prop(s, "deadband")
