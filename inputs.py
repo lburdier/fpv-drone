@@ -247,6 +247,7 @@ class KeyboardBackend:
         self.held = set()
         self.throttle = -1.0          # axis value (-1 = 0 %)
         self.smooth = [0.0, 0.0, 0.0]
+        self.climb = False            # altitude hold: W / S = climb / descend, released = hold (centre)
         self.label = "Keyboard"
 
     def event(self, event):
@@ -261,8 +262,14 @@ class KeyboardBackend:
     def update(self, dt):
         h = self.held
         up_keys, left_keys = self.LAYOUTS.get(self.layout, self.LAYOUTS["BOTH"])
-        if h & up_keys: self.throttle = min(1.0, self.throttle + 1.2 * dt)
-        if "S" in h: self.throttle = max(-1.0, self.throttle - 1.2 * dt)
+        if self.climb:
+            tgt = (1.0 if h & up_keys else 0.0) - (1.0 if "S" in h else 0.0)
+            if "LEFT_CTRL" in h:
+                tgt *= 0.35
+            self.throttle += (tgt - self.throttle) * min(1.0, dt * 8.0)
+        else:
+            if h & up_keys: self.throttle = min(1.0, self.throttle + 1.2 * dt)
+            if "S" in h: self.throttle = max(-1.0, self.throttle - 1.2 * dt)
         boost = 1.0 if "LEFT_SHIFT" in h else (0.35 if "LEFT_CTRL" in h else 0.7)
         target = [((("RIGHT_ARROW" in h) - ("LEFT_ARROW" in h)) * boost),
                   ((("UP_ARROW" in h) - ("DOWN_ARROW" in h)) * boost),
@@ -290,6 +297,9 @@ class _Lazy(dict):
     def __missing__(self, key):
         if key == "PHONE":
             return _phone_backend()
+        if key == "DS4":
+            from .ds4 import PlayStationBackend
+            return PlayStationBackend
         raise KeyError(key)
 
 
@@ -320,7 +330,7 @@ def resolve_backend(choice, cached=False):
     cached=True for the UI (no hardware scan on every redraw); the flight itself always scans."""
     if choice != "AUTO":
         return choice
-    for name in ("PHONE", "XINPUT", "WINMM", "PYGAME"):
+    for name in ("PHONE", "DS4", "XINPUT", "WINMM", "PYGAME"):
         if cached:
             if list_devices_cached(name):
                 return name

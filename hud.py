@@ -82,13 +82,16 @@ def draw_osd(d, W, H, scale=1.0):
 
     # telemetry
     fs = int(15 * s)
-    _text(20 * s, H - 30 * s, "%s  %s" % (d["mode"], d["label"]), fs)
+    _text(20 * s, H - 30 * s, "%s  %s" % (T("SMOOTH") if d["mode"] == 'CINE' else d["mode"], d["label"]), fs)
     _text(20 * s, H - 52 * s, "THR %3d%%" % round(thr * 100), fs)
     _text(W - 170 * s, H - 30 * s, "%4.0f km/h" % d["speed"], fs)
     _text(W - 170 * s, H - 52 * s, "ALT %5.1f m" % d["alt"], fs)
     yb = H - 74 * s
     if d["time_scale"] != 1.0:
         _text(W - 170 * s, yb, T("TIME x%.2f") % d["time_scale"], fs, (1, 0.85, 0.3, 0.95))
+        yb -= 22 * s
+    if d.get("climb"):
+        _text(W - 170 * s, yb, T("ALT HOLD  %+.1f m/s") % d.get("vz", 0.0), fs, (0.6, 1.0, 0.7, 0.9))
         yb -= 22 * s
     boost = d.get("boost", 1.0)
     if abs(boost - 1.0) > 1e-3:

@@ -85,6 +85,8 @@ class FPV_Settings(bpy.types.PropertyGroup):
         ('AUTO', "Auto", "First controller found (XInput, then joystick, then pygame), else keyboard"),
         ('WINMM', "Radio / Joystick", "Any USB joystick on Windows: RC transmitter in joystick mode, flight stick, gamepad"),
         ('XINPUT', "Xbox Gamepad", "Xbox / XInput controller (Windows)"),
+        ('DS4', "PS4 / PS5 Controller", "DualShock 4 or DualSense, USB or Bluetooth, read directly (no DS4Windows or "
+                                         "Steam needed). Buttons fly the drone, rumble and light bar on PS4"),
         ('PHONE', "Phone", "Your phone as a touch radio, through the Phone Link (same Wi-Fi)"),
         ('PYGAME', "Pygame", "Only if pygame is already installed in Blender's Python (any OS)"),
         ('KEYBOARD', "Keyboard", "W/S throttle, A/D yaw, arrows pitch/roll, Shift = full stick, Ctrl = fine")])
@@ -101,11 +103,35 @@ class FPV_Settings(bpy.types.PropertyGroup):
         ('FULL', "Full Travel", "Stick bottom = 0 %, top = 100 % (RC radio, non-centering stick)"),
         ('UPPER', "Upper Half", "Centre = 0 %, top = 100 % (spring-centred gamepad stick)")])
     deadband: FloatProperty(name="Deadband", default=0.03, min=0.0, max=0.3, subtype='FACTOR')
+    throttle_mode: EnumProperty(name="Throttle", default='DIRECT', items=[
+        ('DIRECT', "Direct (real FPV)", "The stick is the motor power, like a real FPV quad"),
+        ('CLIMB', "Altitude Hold", "Stick at the centre = the drone holds its height, up = climbs, down = descends. "
+                                   "Easiest with a gamepad")])
+    climb_rate: FloatProperty(name="Climb Speed (m/s)", default=6.0, min=0.5, max=40.0,
+                              description="Altitude Hold: vertical speed with the stick fully up / down")
+    use_triggers: BoolProperty(name="Triggers: Forward / Back", default=False,
+                               description="R2 (RT) flies forward, L2 (LT) backward: the more you press, the faster. "
+                                           "Angle mode; combine with Altitude Hold to cruise level")
+    axis_forward: IntProperty(name="Forward Axis", default=5, min=0, max=7, description="R2 / RT on a PS or Xbox pad")
+    axis_backward: IntProperty(name="Backward Axis", default=4, min=0, max=7, description="L2 / LT on a PS or Xbox pad")
     # ---------------------------------------------------------------- flight
     flight_mode: EnumProperty(name="Mode", default='ACRO', items=[
         ('ACRO', "Acro", "Rate mode, like a real FPV quad: sticks command rotation speed"),
         ('ANGLE', "Angle", "Self-levelling: sticks command tilt angle. Easier with keyboard or gamepad"),
-        ('MOTION', "Motion", "Phone tilt: point the phone to look and steer, accelerator to fly forward (DJI Motion style)")])
+        ('MOTION', "Motion", "Phone tilt: point the phone to look and steer, accelerator to fly forward (DJI Motion style)"),
+        ('CINE', "Smooth", "Cinematic and easy, less realistic: the sticks set the speed (forward, sideways, up / down, "
+                           "turn), the drone glides, holds its height, stops by itself; level camera, no crash")])
+    cine_speed: FloatProperty(name="Max Speed (km/h)", default=40.0, min=1.0, soft_max=300.0, max=2000.0,
+                              description="Smooth mode: speed with the stick fully forward")
+    cine_smooth: FloatProperty(name="Smoothness", default=0.6, min=0.05, max=4.0, subtype='TIME_ABSOLUTE',
+                               unit='TIME_ABSOLUTE', description="Smooth mode: time to reach the asked speed. "
+                                                                 "Higher = softer starts and stops, more cinematic")
+    cine_yaw_rate: FloatProperty(name="Turn Speed (°/s)", default=60.0, min=5.0, max=720.0,
+                                 description="Smooth mode: rotation speed with the yaw stick fully over")
+    cine_lean: FloatProperty(name="Lean", default=0.5, min=0.0, max=1.0, subtype='FACTOR',
+                             description="Smooth mode: how much the drone leans when it speeds up / brakes (0 = never)")
+    cine_look: FloatProperty(name="Camera Angle", default=0.0, min=-1.5708, max=0.7854, subtype='ANGLE',
+                             description="Smooth mode: camera pitch, level horizon (0 = straight ahead, negative = looking down)")
     keyboard_layout: EnumProperty(name="Keyboard", default='BOTH', items=[
         ('BOTH', "AZERTY + QWERTY", "Z/W and S throttle, Q/A and D yaw"),
         ('AZERTY', "AZERTY (ZQSD)", ""), ('QWERTY', "QWERTY (WASD)", "")])

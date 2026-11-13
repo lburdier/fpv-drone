@@ -81,9 +81,8 @@ class FPV_PT_main(FPV_PT_base, bpy.types.Panel):
         rec = s.record
         big.operator("fpv.fly", text=T("Fly + Record") if rec else T("Fly"), icon='REC' if rec else 'ORIENTATION_GIMBAL',
                      translate=False)
-        row = col.row(align=True)
-        row.prop(s, "record", toggle=True, icon='REC')
-        row.prop(s, "flight_mode", expand=True)
+        col.prop(s, "record", toggle=True, icon='REC')
+        col.row(align=True).prop(s, "flight_mode", expand=True)
         row = col.row(align=True)
         row.prop(s, "drone_class", text=T("Type"), translate=False)
         row.popover(panel="FPV_PT_drone_presets", icon='PRESET', text="")
@@ -113,11 +112,14 @@ class FPV_PT_controller(_Sub, bpy.types.Panel):
             L.prop(s, "device")
         row = L.row(align=True)
         _label(row, "Preset:")
-        for k, n in (('RADIO', "Radio"), ('XBOX', "Xbox"), ('KEYBOARD', "Keyboard")):
+        for k, n in (('RADIO', "Radio"), ('XBOX', "Xbox"), ('PS', "PS4/PS5"), ('KEYBOARD', "Keyboard")):
             row.operator("fpv.preset", text=T(n), translate=False).kind = k
         eff = inputs.resolve_backend(s.backend, cached=True)
         if eff == 'PHONE':
             _label(L, "Phone sticks: nothing to map, see the Phone panel", 'INFO')
+            draw_throttle_mode(L, s)
+            if s.throttle_mode == 'CLIMB':
+                _label(L, "Turn on 'throttle back to centre' in the phone settings", 'INFO')
             return
         if eff == 'KEYBOARD':
             if s.backend == 'AUTO':
@@ -129,7 +131,10 @@ class FPV_PT_controller(_Sub, bpy.types.Panel):
             _label(box, "Arrows pitch / roll", 'EVENT_UP_ARROW')
             _label(box, "Shift full stick   Ctrl fine", 'EVENT_SHIFT')
             _label(box, "Wheel or + / - : speed", 'MOUSE_MMB')
+            draw_throttle_mode(L, s)
             return
+        if eff == 'DS4':
+            draw_playstation_box(L.box())
         L.operator("fpv.monitor", text=T("Stop Test") if st.monitoring else T("Test Controller"),
                    icon='PAUSE' if st.monitoring else 'VIEWZOOM', depress=st.monitoring, translate=False)
         grid = L.grid_flow(columns=1, align=True)
@@ -142,15 +147,45 @@ class FPV_PT_controller(_Sub, bpy.types.Panel):
         if st.monitoring:
             box = L.box()
             box.label(text=st.message, icon='INFO', translate=False)
-            names = inputs.XInputBackend.AXIS_NAMES if inputs.resolve_backend(s.backend, cached=True) == 'XINPUT' else \
-                ("X", "Y", "Z", "R", "U", "V", "6", "7")
+            names = inputs.XInputBackend.AXIS_NAMES if eff in ('XINPUT', 'DS4') else ("X", "Y", "Z", "R", "U", "V", "6", "7")
             for i in range(6):
                 row = box.row()
                 row.label(text="%d  %s" % (i, T(names[i])), translate=False)
                 row.prop(st, "live", index=i, text="", slider=True)
-        L.prop(s, "throttle_range")
+        draw_throttle_mode(L, s)
+        if s.throttle_mode == 'DIRECT':
+            L.prop(s, "throttle_range")
+        box = L.box()
+        box.prop(s, "use_triggers")
+        if s.use_triggers:
+            row = box.row(align=True)
+            row.prop(s, "axis_forward", text=T("R2 axis"), translate=False)
+            row.prop(s, "axis_backward", text=T("L2 axis"), translate=False)
+            if s.flight_mode not in ('ANGLE', 'CINE'):
+                _label(box, "Triggers work in Angle and Smooth modes", 'ERROR')
         L.prop(s, "deadband")
         L.prop(s, "rc_smoothing")
+
+
+def draw_throttle_mode(L, s):
+    L.row().prop(s, "throttle_mode", expand=True)
+    if s.throttle_mode == 'CLIMB':
+        L.prop(s, "climb_rate")
+
+
+def draw_playstation_box(box):
+    from . import ds4
+    pads = inputs.list_devices_cached("DS4")
+    if pads:
+        box.label(text=pads[0][1], icon='CHECKMARK', translate=False)
+    else:
+        _label(box, "No PS4 / PS5 controller found: USB cable or Bluetooth pairing", 'ERROR')
+    col = box.column(align=True)
+    for btn, what in ds4.BUTTON_HELP:
+        row = col.row()
+        row.label(text=T(btn), translate=False)
+        row.label(text=T(what), translate=False)
+    _label(box, "Light bar: blue waiting, green armed, red recording", 'LIGHT')
 
 
 class FPV_PT_flight(_Sub, bpy.types.Panel):
@@ -162,6 +197,13 @@ class FPV_PT_flight(_Sub, bpy.types.Panel):
         L = self.layout
         L.use_property_split = True
         L.use_property_decorate = False
+        if s.flight_mode == 'CINE':
+            box = L.box()
+            _label(box, "Smooth mode: the sticks set the speed", 'MOD_SMOOTH')
+            col = box.column(align=True)
+            col.prop(s, "cine_speed"); col.prop(s, "cine_smooth"); col.prop(s, "cine_yaw_rate")
+            col = box.column(align=True)
+            col.prop(s, "climb_rate"); col.prop(s, "cine_lean"); col.prop(s, "cine_look")
         L.row().prop(s, "rates_type", expand=True)
         if s.rates_type == 'ACTUAL':
             col = L.column(heading=T("Roll / Pitch"), translate=False)

@@ -210,6 +210,7 @@ class FlightSession:
             self.world.skip = self.culler.is_culled
         self.sub_i = 0
         self.period = 1.0 / 60.0
+        self.want_stop = False
         self.boost_clock = -100.0
         self.take_error = ""
 
@@ -320,6 +321,7 @@ class FlightSession:
             self.raw = [st[3], st[2], st[0] * 2 - 1, st[1], 0, 0, 0, 0]
             return st
         if isinstance(b, inputs.KeyboardBackend):      # fixed layout, ignore the joystick mapping
+            b.climb = s.throttle_mode == 'CLIMB' or s.flight_mode == 'CINE'
             axes, _ = b.read()
             self.raw = axes
             self.sticks = ((axes[2] + 1.0) * 0.5, axes[3], axes[1], axes[0])
@@ -333,11 +335,18 @@ class FlightSession:
             v = axes[i] if i < len(axes) else 0.0
             return -v if inv else v
         t = ax(s.axis_throttle, s.inv_throttle)
-        thr = (t + 1.0) * 0.5 if s.throttle_range == 'FULL' else max(0.0, t)
+        if s.throttle_mode == 'CLIMB' or s.flight_mode == 'CINE':     # whole travel, centre = hold the height
+            thr = (t + 1.0) * 0.5
+        else:
+            thr = (t + 1.0) * 0.5 if s.throttle_range == 'FULL' else max(0.0, t)
         db = s.deadband
         yaw = flight.apply_deadband(ax(s.axis_yaw, s.inv_yaw), db)
         pitch = flight.apply_deadband(ax(s.axis_pitch, s.inv_pitch), db)
         roll = flight.apply_deadband(ax(s.axis_roll, s.inv_roll), db)
+        if s.use_triggers and s.flight_mode in ('ANGLE', 'CINE'):   # R2 forward / L2 backward, by how far pressed
+            fwd = (ax(s.axis_forward, False) + 1.0) * 0.5
+            back = (ax(s.axis_backward, False) + 1.0) * 0.5
+            pitch = max(-1.0, min(1.0, pitch + flight.apply_deadband(fwd, 0.04) - flight.apply_deadband(back, 0.04)))
         self.sticks = (max(0.0, min(1.0, thr)), yaw, pitch, roll)
         return self.sticks
 
@@ -355,6 +364,9 @@ class FlightSession:
         sticks = self.read_sticks(real_dt)
         if sticks is None:
             return "Controller disconnected"
+        if hasattr(self.backend, "actions"):              # gamepad buttons (PS4 / PS5)
+            for a in self.backend.actions():
+                self._pad_action(a)
         thr, yaw, pitch, roll = sticks
         self.t_state += real_dt
         if self.state in ('COUNTDOWN', 'WAIT_ARM'):
@@ -371,7 +383,9 @@ class FlightSession:
         if self.state == 'WAIT_ARM':
             if self.in_buf:                          # re-arming after R: the inputs keep being recorded
                 self._rec_input(real_dt)
-            if thr <= ARM_THROTTLE:
+            # altitude hold arms with the stick at the centre (or lower); direct throttle with the stick at 0
+            centred = self.s.flight_mode == 'CINE' or (self.s.throttle_mode == 'CLIMB' and self.s.flight_mode != 'MOTION')
+            if thr <= (0.55 if centred else ARM_THROTTLE):
                 self.state, self.t_state = 'FLY', 0.0
             return None
         self._rec_input(real_dt)
@@ -380,8 +394,11 @@ class FlightSession:
         p = flight.FlightParams(self.s)
         p.floor_z = self.floor
         motion = self.s.flight_mode == 'MOTION'
+        cine = self.s.flight_mode == 'CINE'
         if motion and self.pilot is None:
             self.pilot = flight.MotionPilot(self.drone)
+        elif cine and not isinstance(self.pilot, flight.CinePilot):
+            self.pilot = flight.CinePilot(self.drone)
         # accumulated clock: the fraction of a sub-step left at the end of a tick is carried over, not lost
         # (losing it made the sim run ~10 % slow and at an irregular pace = judder)
         self.clock = max(getattr(self, "clock", 0.0), self.sim_t) + real_dt * self.s.time_scale
@@ -419,6 +436,9 @@ class FlightSession:
                 acc = self.pilot.update_targets(self.motion, self.s, SUBSTEP)
                 motor, q_des = self.pilot.command(self.drone, acc, p, self.s, SUBSTEP)
                 self.drone.step(motor, 0.0, 0.0, 0.0, p, SUBSTEP, q_des=q_des)
+                self.gimbal_q = self.pilot.gimbal(self.drone, None, self.s, SUBSTEP)
+            elif cine:
+                self.pilot.step(self.drone, thr, yaw, pitch, roll, p, self.s, SUBSTEP)
                 self.gimbal_q = self.pilot.gimbal(self.drone, None, self.s, SUBSTEP)
             else:
                 self.drone.step(thr, yaw, pitch, roll, p, SUBSTEP)
@@ -536,7 +556,8 @@ class FlightSession:
                 if speed > self.last_impact[1] or self.sim_t - self.last_impact[0] > 0.3:
                     self.last_impact = (self.sim_t, speed)
                 self.crashed_t = self.sim_t
-                if self.state == 'FLY' and self.s.crash_mode == 'CRASH' and speed >= self.s.crash_speed:
+                if self.state == 'FLY' and self.s.crash_mode == 'CRASH' and speed >= self.s.crash_speed \
+                        and self.s.flight_mode != 'CINE':                  # the smooth mode never crashes
                     self.state, self.t_state = 'CRASHED', 0.0
                     self.pilot = None
 
@@ -586,7 +607,8 @@ class FlightSession:
         obj.location = pos
         obj.rotation_quaternion = q
         cam_animated = self.cam is not None and (self.s.vibration > 0.0 or self.s.horizon_lock > 0.0 or self.drone.wash > 0.0)
-        if self.pilot is not None and self.s.flight_mode == 'MOTION':
+        gimballed = self.pilot is not None and self.s.flight_mode in ('MOTION', 'CINE')
+        if gimballed:
             g = gimbal if gimbal is not None else self.gimbal_q
             if g is None:
                 g = self.pilot.gimbal(self.drone, None, self.s, 1.0 / 60.0)
@@ -597,8 +619,8 @@ class FlightSession:
                 self.prev_q = q.copy()
                 obj.rotation_quaternion = q
             cam_animated = self.cam is not None
-        if self.cam is not None and self.pilot is not None and self.s.flight_mode == 'MOTION':
-            cq = g @ jit
+        if self.cam is not None and gimballed:
+            cq = (g @ jit) if self.s.flight_mode == 'MOTION' else g.copy()   # smooth mode: no vibration at all
             if cq.dot(self.prev_cq) < 0.0:
                 cq.negate()
             self.prev_cq = cq.copy()
@@ -649,6 +671,28 @@ class FlightSession:
             "flying": True, "state": h["state"], "cd": max(1, 3 - int(h["t_state"])) if h["state"] == 'COUNTDOWN' else 0,
             "mode": h["mode"], "rec": h["rec"], "frame": h["frame"], "speed": round(h["speed"], 1), "alt": round(h["alt"], 1),
             "crash": h["crash"], "impact": round(h.get("impact", 0.0), 1), "boost": round(h["boost"], 2)}
+
+    def _pad_action(self, a):
+        if a in ('fire', 'reset', 'recenter'):
+            if a != 'fire' or self.proj is not None:
+                self.event(a)
+        elif a == 'speed+':
+            self.change_boost(1)
+        elif a == 'speed-':
+            self.change_boost(-1)
+        elif a == 'stop':
+            self.want_stop = True
+        elif a == 'osd':
+            self.s.show_hud = not self.s.show_hud
+
+    def feedback(self):
+        """Controller light bar / rumble (PS4)."""
+        fb = getattr(self.backend, "feedback", None)
+        if fb is not None:
+            try:
+                fb(self.state, self.record and self.state == 'FLY', self.shake)
+            except Exception:
+                pass
 
     def change_boost(self, direction):
         """Mouse wheel / + - / phone buttons while flying: next speed multiplier step."""
@@ -735,6 +779,8 @@ class FlightSession:
             "impact": self.last_impact[1] if self.sim_t - self.last_impact[0] < 0.7 else 0.0, "tick_ms": self.tick_ms,
             "look": self.pilot.look if self.pilot else 0.0,
             "boost": self.s.speed_boost, "boost_age": time.perf_counter() - self.boost_clock,
+            "climb": (self.s.throttle_mode == 'CLIMB' and self.s.flight_mode != 'MOTION') or self.s.flight_mode == 'CINE',
+            "vz": d.vel.z * p_mpu,
             "cull": self.culler.stats() if self.culler is not None else None,
             "proj": self.proj.fired if self.proj is not None else None,
         }

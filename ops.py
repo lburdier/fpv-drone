@@ -162,8 +162,11 @@ class FPV_OT_fly(_Op, bpy.types.Operator):
                 self.stats.ticks.append(now)
             try:
                 msg = self.sess.tick(dt)
+                self.sess.feedback()
             except Exception as e:
                 msg = "FPV error: %s" % e
+            if self.sess.want_stop:                       # Options button on the PS controller
+                return self._finish(context)
             if len(self.stats.tick_cost) < 200000:
                 self.stats.tick_cost.append((time.perf_counter() - now) * 1000.0)
             if msg:
@@ -300,9 +303,14 @@ class FPV_OT_start_here(_Op, bpy.types.Operator):
 
 PRESETS = {
     'RADIO': dict(backend='WINMM', axis_roll=0, axis_pitch=1, axis_throttle=2, axis_yaw=3, inv_roll=False, inv_pitch=False,
-                  inv_throttle=False, inv_yaw=False, throttle_range='FULL', flight_mode='ACRO'),
+                  inv_throttle=False, inv_yaw=False, throttle_range='FULL', flight_mode='ACRO',
+                  throttle_mode='DIRECT', use_triggers=False),
     'XBOX': dict(backend='XINPUT', axis_yaw=0, axis_throttle=1, axis_roll=2, axis_pitch=3, inv_roll=False, inv_pitch=False,
-                 inv_throttle=False, inv_yaw=False, throttle_range='UPPER', flight_mode='ANGLE'),
+                 inv_throttle=False, inv_yaw=False, throttle_range='UPPER', flight_mode='ANGLE',
+                 throttle_mode='CLIMB', use_triggers=True, axis_forward=5, axis_backward=4),
+    'PS': dict(backend='DS4', axis_yaw=0, axis_throttle=1, axis_roll=2, axis_pitch=3, inv_roll=False, inv_pitch=False,
+               inv_throttle=False, inv_yaw=False, throttle_range='UPPER', flight_mode='ANGLE',
+               throttle_mode='CLIMB', use_triggers=True, axis_forward=5, axis_backward=4),
     'KEYBOARD': dict(backend='KEYBOARD', axis_roll=0, axis_pitch=1, axis_throttle=2, axis_yaw=3, inv_roll=False, inv_pitch=False,
                      inv_throttle=False, inv_yaw=False, throttle_range='FULL', flight_mode='ANGLE'),
 }
@@ -314,7 +322,8 @@ class FPV_OT_preset(_Op, bpy.types.Operator):
     bl_label = "Controller Preset"
     bl_options = {'REGISTER', 'UNDO'}
     kind: EnumProperty(items=[('RADIO', "RC Radio", "EdgeTX / OpenTX radio in USB joystick mode"),
-                              ('XBOX', "Xbox Gamepad", ""), ('KEYBOARD', "Keyboard", "")])
+                              ('XBOX', "Xbox Gamepad", ""), ('PS', "PS4 / PS5 Controller", ""),
+                              ('KEYBOARD', "Keyboard", "")])
 
     def execute(self, context):
         s = context.scene.fpv

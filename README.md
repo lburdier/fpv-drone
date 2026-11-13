@@ -1,4 +1,4 @@
-# FPV Drone 2.8.0 – extension Blender 4.2 → 5.x (testée 5.3)
+# FPV Drone 2.9.0 – extension Blender 4.2 → 5.x (testée 5.3)
 
 Pilote une caméra comme un drone FPV (radiocommande, manette ou clavier) et enregistre le vol en keyframes.
 Réécriture complète de *Quadcopter FPV Simulator* (WizardOfRobots, 2021), sous licence GPL-3.0-or-later.
@@ -6,10 +6,25 @@ Réécriture complète de *Quadcopter FPV Simulator* (WizardOfRobots, 2021), sou
 Testée sur Blender **5.0.1, 5.1.2 et 5.3.0**. QR code : bibliothèque *QR Code generator* de Project Nayuki (MIT), incluse.
 
 ## Installation
-Glisse `fpv_drone-2.8.0.zip` dans la fenêtre de Blender, ou *Edit › Preferences › Get Extensions › ⌄ › Install from Disk*.
+Glisse `fpv_drone-2.9.0.zip` dans la fenêtre de Blender, ou *Edit › Preferences › Get Extensions › ⌄ › Install from Disk*.
 Le panneau apparaît dans la Vue 3D › barre latérale (N) › onglet **FPV Drone**.
 
 Aucune installation pip ni pygame n'est nécessaire sous Windows.
+
+## Nouveautés 2.9
+- **Manette PS4 / PS5** (entrée *Manette PS4 / PS5*, ou préréglage rapide **PS4/PS5**) : DualShock 4 et DualSense, en USB ou en Bluetooth, lues directement, sans DS4Windows ni Steam.
+  - Sticks et gâchettes analogiques.
+  - Boutons : **Options** arrête le vol, **Triangle** ramène au départ, **Croix** tire, **R1 / L1** changent la vitesse, **Carré** recentre (mode Motion), **pavé tactile** affiche ou masque l'OSD.
+  - Sur PS4 : **vibrations** aux impacts, et **barre lumineuse** bleue en attente, verte une fois armé, rouge pendant l'enregistrement, orange après un crash.
+  - Le panneau Manette affiche la manette détectée (USB ou Bluetooth).
+- **Maintien d'altitude** (panneau Manette, *Gaz*) : stick au centre, le drone reste à sa hauteur ; vers le haut il monte, vers le bas il descend, à la *vitesse verticale* réglée. Marche aussi au clavier (Z/W monte, S descend, rien = garde l'altitude) et au téléphone (active « Gaz qui reviennent au centre »).
+- **Gâchettes avancer / reculer** : R2 (RT) fait avancer, L2 (LT) fait reculer, plus ou moins vite selon la pression. Modes Angle et Fluide. Avec le maintien d'altitude, le drone avance à hauteur constante.
+- **Mode de vol « Fluide »** (4e bouton à côté d'Acro / Angle / Motion), volontairement moins réaliste et très doux :
+  - les sticks donnent une vitesse : avancer / reculer, glisser sur le côté, monter / descendre, tourner ;
+  - le drone accélère et freine en courbe en S, s'arrête tout seul, garde son altitude et ne crashe pas ;
+  - la caméra reste à l'horizontale, comme sur une nacelle ;
+  - réglages dans le panneau Vol : vitesse max, douceur, vitesse de rotation, inclinaison, angle de la caméra.
+- Les préréglages rapides **Xbox** et **PS4/PS5** activent maintenant le mode facile : Angle, maintien d'altitude et gâchettes. Deux nouveaux préréglages sont fournis : « PS4 PS5 Easy Altitude Hold R2 » et « Xbox Easy Altitude Hold RT ».
 
 ## Nouveautés 2.8
 - **Revoler la prise** (panneau Enregistrement) : pendant l'enregistrement, les sticks sont sauvegardés sur le drone (courbes *FPV Inputs*, modifiables dans le Graph Editor). **Revoler la prise** rejoue ces entrées avec les réglages ACTUELS : change le type de drone, les rates, le vent, le multiplicateur de vitesse, ou retouche une courbe de gaz, et le vol est recalculé. Avec les mêmes réglages, la prise revient à l'identique (écart < 0,01 mm). Les tirs, les R (retour au départ) et les recentrages du téléphone sont rejoués aussi.

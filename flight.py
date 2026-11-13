@@ -149,6 +149,9 @@ class FlightParams:
         self.boost = max(0.01, getattr(s, "speed_boost", 1.0))
         self.mpu_real = max(1e-6, s.meters_per_unit)
         self.mpu = self.mpu_real / self.boost
+        # Altitude hold: the throttle stick commands a climb rate (centre = hold the height)
+        self.climb = getattr(s, "throttle_mode", 'DIRECT') == 'CLIMB'
+        self.climb_rate = max(0.1, getattr(s, "climb_rate", 6.0))
         self.throttle_expo = s.throttle_expo
         self.floor_z = None                    # set by the session (auto / fixed / off)
         self.ground_effect = s.ground_effect
@@ -177,6 +180,8 @@ class Drone:
         self.motor = 0.0                     # actual motor output, 0..1
         self.t = 0.0
         self.wash = 0.0                      # prop-wash intensity 0..1 (for the OSD / camera shake)
+        self.climb_i = 0.0                   # altitude hold: integral of the climb-rate error
+        self.alt_hold = None                 # altitude hold: locked height (m) while the stick is centred
         rng = random.Random(seed)
         self._gust = [_OU(1.8, rng) for _ in range(3)]
         self._turb = [_OU(0.12, rng) for _ in range(3)]
@@ -197,6 +202,27 @@ class Drone:
                  @ Quaternion((0.0, 1.0, 0.0), roll * p.max_angle))
         return self.rates_to(q_des)
 
+    def climb_throttle(self, stick01, up, v, p, dt):
+        """Altitude hold: stick centred = hold the height, up = climb, down = descend (at most climb_rate m/s).
+        Returns the motor command; the tilt is compensated so a leaning drone does not sink."""
+        st = apply_deadband(stick01 * 2.0 - 1.0, 0.06)
+        st = st * abs(st) * 0.4 + st * 0.6                      # finer around the centre
+        if st == 0.0:
+            # stick centred: lock the height where the drone is (a little ahead of the climb / descent)
+            if self.alt_hold is None:
+                self.alt_hold = self.pos.z * p.mpu + v.z * 0.25
+            vz_des = max(-p.climb_rate, min(p.climb_rate, (self.alt_hold - self.pos.z * p.mpu) * 1.6))
+        else:
+            self.alt_hold = None
+            vz_des = st * p.climb_rate
+        err = vz_des - v.z
+        self.climb_i = max(-6.0, min(14.0, self.climb_i + err * dt * 3.0))
+        a_z = err * 3.5 + self.climb_i
+        upz = max(0.3, up.z)
+        inflow = max(0.3, 1.0 - max(0.0, v.dot(up)) / p.prop_speed) if p.realism else 1.0
+        g = G if p.gravity else 0.0
+        return max(0.0, min(1.0, (g + a_z) / (p.twr * G * upz * inflow)))
+
     def rates_to(self, q_des, gain=9.0, limit=14.0):
         """Body rates that rotate the quad toward q_des (attitude controller)."""
         q_err = q_des @ self.q.conjugated()
@@ -215,11 +241,13 @@ class Drone:
         self.t += dt
         mpu = p.mpu
         t = max(0.0, min(1.0, throttle))
-        if q_des is None:
-            t = t * (1.0 - p.throttle_expo) + p.throttle_expo * t ** 3
-        self.throttle = t
         up = self.q @ _Z
         v = self.vel * mpu                                       # m/s, ground frame
+        if q_des is None and p.climb:
+            t = self.climb_throttle(t, up, v, p, dt)
+        elif q_des is None:
+            t = t * (1.0 - p.throttle_expo) + p.throttle_expo * t ** 3
+        self.throttle = t
 
         if p.realism:
             # motors: spool up faster than they spool down
@@ -408,6 +436,85 @@ class MotionPilot:
             if local.dot(self.cam_q) < 0.0:
                 local.negate()
             self.cam_q = self.cam_q.slerp(local, 1.0 - exp(-dt / 0.06))
+        return self.cam_q
+
+
+# ===================================================================================== smooth (cinematic) mode
+class CinePilot:
+    """Smooth mode, deliberately less realistic: the sticks set SPEEDS (forward / sideways / up-down / turn) and the
+    drone glides there along an S-curve (no jerk), stops by itself when the sticks are released, holds its height,
+    never crashes. The body only leans a little for the look; the camera is a level, damped gimbal."""
+
+    def __init__(self, drone):
+        self.heading = drone.heading
+        self.yaw_rate = 0.0
+        self.v1 = drone.vel.copy() * 0.0         # first smoothing stage (m/s)
+        self.alt = None
+        self.lean_p = 0.0
+        self.lean_r = 0.0
+        self.look = 0.0
+        self.cam_q = None
+
+    def step(self, d, thr, yaw, pitch, roll, p, s, dt):
+        mpu = p.mpu
+        tau = max(0.05, s.cine_smooth)
+        k = 1.0 - exp(-dt / tau)
+        # turning: the yaw rate itself is smoothed (pans start and stop softly)
+        yr_des = -yaw * radians(s.cine_yaw_rate)
+        self.yaw_rate += (yr_des - self.yaw_rate) * (1.0 - exp(-dt / max(0.04, tau * 0.6)))
+        self.heading += self.yaw_rate * dt
+        h = self.heading
+        fwd = Vector((-sin(h), cos(h), 0.0))
+        right = Vector((cos(h), sin(h), 0.0))
+        # speeds asked by the sticks (m/s); throttle centred = hold the height
+        vmax = s.cine_speed / 3.6
+        climb = apply_deadband(thr * 2.0 - 1.0, 0.06)
+        z_m = d.pos.z * mpu
+        v = d.vel * mpu
+        if climb == 0.0:
+            if self.alt is None:
+                self.alt = z_m + v.z * tau
+            vz = max(-p.climb_rate, min(p.climb_rate, (self.alt - z_m) * 1.2))
+        else:
+            self.alt = None
+            vz = climb * p.climb_rate
+        v_des = fwd * (pitch * vmax) + right * (roll * vmax) + Vector((0.0, 0.0, vz))
+        # two cascaded low-passes = S-curve: smooth start, smooth stop, no overshoot
+        self.v1 += (v_des - self.v1) * k
+        v_new = v + (self.v1 - v) * k
+        acc = (v_new - v) / dt
+        d.vel = v_new / mpu
+        d.pos += d.vel * dt
+        # a little lean in the direction of the acceleration (looks alive, stays calm)
+        lean = s.cine_lean
+        lim = radians(25.0)
+        tp = max(-lim, min(lim, -atan2(acc.dot(fwd), G) * lean))
+        tr = max(-lim, min(lim, atan2(acc.dot(right), G) * lean))
+        kl = 1.0 - exp(-dt / 0.15)
+        self.lean_p += (tp - self.lean_p) * kl
+        self.lean_r += (tr - self.lean_r) * kl
+        d.q = (Quaternion((0.0, 0.0, 1.0), h) @ Quaternion((1.0, 0.0, 0.0), self.lean_p)
+               @ Quaternion((0.0, 1.0, 0.0), self.lean_r))
+        d.heading = h
+        d.w = Vector((0.0, 0.0, self.yaw_rate))
+        d.t += dt
+        d.wash = 0.0
+        d.throttle = d.motor = 0.45 + 0.1 * max(-1.0, min(1.0, vz / max(0.1, p.climb_rate)))
+        self.look = s.cine_look
+
+    def recenter(self):
+        pass
+
+    def gimbal(self, drone, cam_base_q, s, dt):
+        """Level camera: heading + the chosen look angle, no roll; slightly damped like a real gimbal."""
+        world = Quaternion((0.0, 0.0, 1.0), self.heading) @ Quaternion((1.0, 0.0, 0.0), radians(90.0) + s.cine_look)
+        local = drone.q.conjugated() @ world
+        if self.cam_q is None:
+            self.cam_q = local
+        else:
+            if local.dot(self.cam_q) < 0.0:
+                local.negate()
+            self.cam_q = self.cam_q.slerp(local, 1.0 - exp(-dt / 0.08))
         return self.cam_q
 
 

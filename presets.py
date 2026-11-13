@@ -23,11 +23,12 @@ DRONE_VALUES = [
     "s.act_center", "s.act_max", "s.act_expo", "s.act_yaw_center", "s.act_yaw_max", "s.act_yaw_expo",
     "s.max_angle", "s.cam_tilt", "s.cam_fov", "s.vibration", "s.horizon_lock", "s.speed_boost",
     "s.motion_max_speed", "s.motion_max_accel", "s.motion_max_tilt", "s.motion_turn_rate", "s.motion_yaw_rate",
-    "s.motion_smooth",
+    "s.motion_smooth", "s.cine_speed", "s.cine_smooth", "s.cine_yaw_rate", "s.cine_lean", "s.cine_look", "s.climb_rate",
 ]
 CTRL_VALUES = [
     "s.backend", "s.axis_throttle", "s.axis_yaw", "s.axis_pitch", "s.axis_roll", "s.inv_throttle", "s.inv_yaw",
     "s.inv_pitch", "s.inv_roll", "s.throttle_range", "s.deadband", "s.rc_smoothing", "s.keyboard_layout",
+    "s.throttle_mode", "s.climb_rate", "s.use_triggers", "s.axis_forward", "s.axis_backward",
 ]
 
 # bundled controller presets: (file name, values). Axis numbers are the joystick axes Windows reports.
@@ -43,12 +44,42 @@ BUNDLED = {
     "PlayStation_USB_Gamepad_Mode_2": dict(
         backend='WINMM', axis_yaw=0, axis_throttle=1, axis_roll=2, axis_pitch=3, inv_throttle=True, inv_pitch=True,
         throttle_range='UPPER'),
+    "PS4_PS5_Controller_Mode_2": dict(
+        backend='DS4', axis_yaw=0, axis_throttle=1, axis_roll=2, axis_pitch=3, throttle_range='UPPER'),
+    "PS4_PS5_Controller_R2_Throttle": dict(
+        backend='DS4', axis_yaw=0, axis_throttle=5, axis_roll=2, axis_pitch=3, throttle_range='FULL'),
+    "PS4_PS5_Easy_Altitude_Hold_R2": dict(
+        backend='DS4', axis_yaw=0, axis_throttle=1, axis_roll=2, axis_pitch=3, throttle_range='UPPER',
+        throttle_mode='CLIMB', use_triggers=True, axis_forward=5, axis_backward=4, flight_mode='ANGLE'),
+    "Xbox_Easy_Altitude_Hold_RT": dict(
+        backend='XINPUT', axis_yaw=0, axis_throttle=1, axis_roll=2, axis_pitch=3, throttle_range='UPPER',
+        throttle_mode='CLIMB', use_triggers=True, axis_forward=5, axis_backward=4, flight_mode='ANGLE'),
     "Keyboard": dict(backend='KEYBOARD'),
 }
 
 
 def _user_dir(sub):
     return bpy.utils.user_resource('SCRIPTS', path=os.path.join("presets", sub), create=True)
+
+
+_MARK = "# fpv_drone bundled preset v"
+_BUNDLE_VERSION = 2
+
+
+def _render(vals, version):
+    """Content of a bundled preset file. version 1 = what 2.8 wrote (no marker, no altitude-hold fields)."""
+    full = dict(inv_throttle=False, inv_yaw=False, inv_pitch=False, inv_roll=False)
+    if version >= 2:
+        full.update(throttle_mode='DIRECT', use_triggers=False)
+        full.update(vals)
+        head = [_MARK + str(version), "import bpy", _S]
+    else:
+        full.update({k: v for k, v in vals.items() if k not in NEW_IN_V2})
+        head = ["import bpy", _S]
+    return "\n".join(head + ["s.%s = %r" % (k, v) for k, v in full.items()]) + "\n"
+
+
+NEW_IN_V2 = ("throttle_mode", "use_triggers", "axis_forward", "axis_backward", "flight_mode", "climb_rate")
 
 
 def install_bundled():
@@ -59,15 +90,19 @@ def install_bundled():
     for name, vals in BUNDLED.items():
         path = os.path.join(d, name + ".py")
         if os.path.exists(path):
-            continue
-        full = dict(inv_throttle=False, inv_yaw=False, inv_pitch=False, inv_roll=False)
-        full.update(vals)
-        lines = ["import bpy", _S]
-        for k, v in full.items():
-            lines.append("s.%s = %r" % (k, v))
+            # upgrade only our own older files: a preset the user saved (or edited) under that name is kept
+            try:
+                with open(path, encoding="utf-8") as f:
+                    cur = f.read()
+            except OSError:
+                continue
+            ours_old = cur == _render(vals, 1) or (cur.startswith(_MARK) and
+                                                    not cur.startswith(_MARK + str(_BUNDLE_VERSION) + "\n"))
+            if not ours_old:
+                continue
         try:
             with open(path, "w", encoding="utf-8") as f:
-                f.write("\n".join(lines) + "\n")
+                f.write(_render(vals, _BUNDLE_VERSION))
         except OSError:
             pass
 
