@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b0d10">
+<title>FPV Drone – Radio</title>
+<style>
+  :root { --bg:#0b0d10; --panel:#151a20; --line:#2a323c; --txt:#e9eef3; --dim:#8a96a3; --ok:#3ddc84; --warn:#ffb020; --bad:#ff4d4d; --acc:#4da3ff; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--txt); font:600 14px/1.2 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+              overflow:hidden; touch-action:none; user-select:none; -webkit-user-select:none; overscroll-behavior:none; }
+  #app { position:fixed; inset:0; display:grid; grid-template-rows:auto 1fr; padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  header { display:flex; align-items:center; gap:8px; padding:8px 10px; background:var(--panel); border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--bad); }
+  .dot.ok { background:var(--ok); }
+  .pill { padding:6px 10px; border-radius:8px; background:#1d242c; border:1px solid var(--line); color:var(--txt); font:inherit; }
+  button.pill { cursor:pointer; }
+  button.pill:active { transform:scale(.97); }
+  .grow { flex:1; }
+  .tele { font-variant-numeric:tabular-nums; color:var(--dim); }
+  .tele b { color:var(--txt); }
+  #state { min-width:92px; text-align:center; }
+  #state.armed { color:var(--ok); border-color:var(--ok); }
+  #state.disarmed { color:var(--warn); border-color:var(--warn); }
+  #rec.on { background:var(--bad); border-color:var(--bad); color:#fff; }
+  #fly { background:var(--acc); border-color:var(--acc); color:#04121f; min-width:84px; }
+  #fly.stop { background:var(--bad); border-color:var(--bad); color:#fff; }
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .seg button { border:0; border-radius:0; background:#1d242c; color:var(--dim); padding:6px 10px; font:inherit; }
+  .seg button.on { background:var(--acc); color:#04121f; }
+  main { position:relative; display:grid; grid-template-columns:1fr 1fr; gap:14px; padding:14px; }
+  .pad { position:relative; border-radius:20px; background:radial-gradient(circle at 50% 50%, #18202a 0, #11161c 70%); border:1px solid var(--line); overflow:hidden; }
+  .pad .cross { position:absolute; inset:0; pointer-events:none; }
+  .pad .cross::before, .pad .cross::after { content:""; position:absolute; background:#243040; }
+  .pad .cross::before { left:50%; top:8%; bottom:8%; width:1px; }
+  .pad .cross::after { top:50%; left:8%; right:8%; height:1px; }
+  .knob { position:absolute; width:70px; height:70px; margin:-35px 0 0 -35px; border-radius:50%; background:radial-gradient(circle at 35% 30%, #5b6b7d, #2a3440);
+          border:2px solid #7d8fa3; box-shadow:0 6px 18px rgba(0,0,0,.6); left:50%; top:50%; pointer-events:none; }
+  .pad.active .knob { border-color:var(--acc); }
+  .label { position:absolute; left:12px; top:10px; color:var(--dim); font-size:12px; letter-spacing:.06em; pointer-events:none; }
+  .val { position:absolute; right:12px; top:10px; color:var(--dim); font-size:12px; font-variant-numeric:tabular-nums; pointer-events:none; }
+  #thrbar { position:absolute; left:6px; bottom:8%; width:6px; height:0; background:var(--ok); border-radius:3px; pointer-events:none; }
+  /* tilt mode */
+  #tilt { display:none; grid-template-columns:1.25fr 1fr; gap:14px; padding:14px; }
+  body.tiltmode main { display:none; }
+  body.tiltmode #tilt { display:grid; }
+  #tleft { display:flex; flex-direction:column; gap:12px; min-height:0; }
+  #att { position:relative; flex:1; min-height:0; border-radius:20px; border:1px solid var(--line); overflow:hidden; background:#0e1318; }
+  #yaw { position:relative; height:74px; flex:none; border-radius:18px; border:1px solid var(--line); background:linear-gradient(90deg,#141b22,#18212b 50%,#141b22); overflow:hidden; }
+  #yaw.active { border-color:var(--acc); }
+  #yaw .mid { position:absolute; left:50%; top:10px; bottom:10px; width:1px; background:#2c3946; }
+  #yaw .lab { position:absolute; left:14px; top:8px; color:var(--dim); font-size:11px; letter-spacing:.08em; pointer-events:none; }
+  #yaw .arr { position:absolute; top:50%; transform:translateY(-50%); color:#3a4a5a; font-size:22px; pointer-events:none; }
+  #yawknob { position:absolute; top:50%; left:50%; width:58px; height:58px; margin:-29px 0 0 -29px; border-radius:50%;
+             background:radial-gradient(circle at 35% 30%, #5b6b7d, #2a3440); border:2px solid #7d8fa3; pointer-events:none; }
+  #yaw.active #yawknob { border-color:var(--acc); }
+  #attc { position:absolute; inset:0; width:100%; height:100%; }
+  #recenter { position:absolute; left:12px; bottom:12px; }
+  #sensor { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; text-align:center; padding:16px; background:rgba(8,11,14,.92); }
+  #sensor.hidden { display:none; }
+  #accel { position:relative; border-radius:20px; border:1px solid var(--line); background:linear-gradient(#141b22,#0f1419); overflow:hidden; }
+  #accfill { position:absolute; left:0; right:0; bottom:0; height:0; background:linear-gradient(0deg, rgba(61,220,132,.55), rgba(61,220,132,.15)); pointer-events:none; }
+  #acctxt { position:absolute; left:0; right:0; top:42%; text-align:center; font-size:34px; font-variant-numeric:tabular-nums; pointer-events:none; }
+  #acclab { position:absolute; left:0; right:0; top:58%; text-align:center; color:var(--dim); font-size:12px; letter-spacing:.08em; pointer-events:none; }
+  #accel.active { border-color:var(--ok); }
+  #overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:10px; background:rgba(5,7,9,.86); z-index:10; text-align:center; padding:20px; }
+  #overlay.hidden { display:none; }
+  #rotate { display:none; }
+  @media (orientation:portrait) { #rotate { display:flex; } }
+  #settings { position:fixed; right:10px; top:56px; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; z-index:5; display:none; min-width:260px; }
+  #settings.open { display:block; }
+  #settings label { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:8px 0; color:var(--dim); }
+  #settings input[type=range] { width:120px; }
+  .big { font-size:16px; padding:12px 18px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <span class="dot" id="dot"></span>
+    <span class="tele" id="lat">--</span>
+    <span class="pill" id="state">OFFLINE</span>
+    <span class="seg"><button id="mSticks" class="on">🎮 Sticks</button><button id="mTilt">📱 Tilt</button></span>
+    <button class="pill" id="mode">ACRO</button>
+    <span class="seg" title="Vitesse"><button id="spdDn">−</button><button id="spdV">×1</button><button id="spdUp">+</button></span>
+    <button class="pill" id="rec">● REC</button>
+    <span class="grow tele"><b id="spd">0</b> km/h · <b id="alt">0.0</b> m <span id="frm"></span></span>
+    <button class="pill" id="fire" title="Tir (projectiles)">● TIR</button>
+    <button class="pill" id="reset">⟲</button>
+    <button class="pill" id="fly">▶ FLY</button>
+    <button class="pill" id="gear">⚙</button>
+    <button class="pill" id="fs">⛶</button>
+  </header>
+  <main>
+    <div class="pad" id="padL"><div class="cross"></div><div id="thrbar"></div><span class="label" id="labL">GAZ · LACET</span><span class="val" id="valL"></span><div class="knob" id="knobL"></div></div>
+    <div class="pad" id="padR"><div class="cross"></div><span class="label" id="labR">TANGAGE · ROULIS</span><span class="val" id="valR"></span><div class="knob" id="knobR"></div></div>
+  </main>
+  <section id="tilt">
+    <div id="tleft">
+    <div id="att"><canvas id="attc"></canvas>
+      <button class="pill" id="recenter">⌖ Recentrer</button>
+      <div id="sensor"><div id="sensorMsg" style="font-size:16px">Le mode Tilt utilise le gyroscope du téléphone.</div>
+        <button class="pill big" id="sensorBtn">Activer les capteurs</button></div>
+    </div>
+    <div id="yaw"><span class="lab">ROTATION</span><span class="arr" style="left:18px">⟲</span><span class="arr" style="right:18px">⟳</span>
+      <div class="mid"></div><div id="yawknob"></div></div>
+    </div>
+    <div id="accel"><div id="accfill"></div><div id="acctxt">0%</div><div id="acclab">ACCÉLÉRATEUR</div></div>
+  </section>
+</div>
+<div id="settings">
+  <label>Mode radio <select id="radioMode" class="pill"><option value="2">Mode 2</option><option value="1">Mode 1</option></select></label>
+  <label>Gaz qui reviennent au centre <input type="checkbox" id="thrSpring"></label>
+  <label>Expo sticks <input type="range" id="expo" min="0" max="0.8" step="0.05" value="0.3"></label>
+  <label>Sensibilité <input type="range" id="gain" min="0.5" max="1.0" step="0.05" value="1"></label>
+  <label>Tilt : accélérateur maintenu <input type="checkbox" id="accHold"></label>
+  <label>Tilt : lissage capteurs <input type="range" id="tsmooth" min="0" max="0.9" step="0.05" value="0.6"></label>
+  <label>Vibration (Android) <input type="checkbox" id="haptic" checked></label>
+</div>
+<div id="overlay"><div style="font-size:20px">Connexion à Blender…</div><div class="tele" id="ovmsg">Même réseau Wi-Fi que le PC</div></div>
+<div id="rotate" style="position:fixed;inset:0;z-index:20;background:var(--bg);align-items:center;justify-content:center;font-size:20px;text-align:center;padding:30px">
+  Tourne le téléphone en paysage 📱↻</div>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const K = new URLSearchParams(location.search).get('k') || '';
+  const S = JSON.parse(localStorage.getItem('fpvSettings') || '{}');
+  const cfg = Object.assign({ radioMode: 2, thrSpring: false, expo: 0.3, gain: 1, haptic: true, accHold: false, tsmooth: 0.6 }, S);
+  for (const id of ['radioMode', 'expo', 'gain', 'tsmooth']) $(id).value = cfg[id];
+  for (const id of ['thrSpring', 'haptic', 'accHold']) $(id).checked = cfg[id];
+  const save = () => localStorage.setItem('fpvSettings', JSON.stringify(cfg));
+  ['radioMode', 'expo', 'gain', 'tsmooth'].forEach(id => $(id).addEventListener('input', e => { cfg[id] = +e.target.value; save(); relabel(); }));
+  ['thrSpring', 'haptic', 'accHold'].forEach(id => $(id).addEventListener('change', e => { cfg[id] = e.target.checked; save(); }));
+  $('gear').onclick = () => $('settings').classList.toggle('open');
+  $('fs').onclick = () => { const d = document.documentElement; (d.requestFullscreen || d.webkitRequestFullscreen || (() => {})).call(d); try { screen.orientation.lock('landscape'); } catch (e) {} };
+  const buzz = p => { if (cfg.haptic && navigator.vibrate) try { navigator.vibrate(p); } catch (e) {} };
+
+  // ================================================================ sticks mode
+  const pads = { L: { el: $('padL'), knob: $('knobL'), x: 0, y: -1, id: null }, R: { el: $('padR'), knob: $('knobR'), x: 0, y: 0, id: null } };
+  const throttlePad = () => cfg.radioMode === 2 ? 'L' : 'R';
+  function relabel() {
+    $('labL').textContent = cfg.radioMode === 2 ? 'GAZ · LACET' : 'TANGAGE · LACET';
+    $('labR').textContent = cfg.radioMode === 2 ? 'TANGAGE · ROULIS' : 'GAZ · ROULIS';
+    for (const k in pads) { if (k !== throttlePad() && pads[k].id === null) pads[k].y = 0; }
+    if (pads[throttlePad()].id === null && !cfg.thrSpring) pads[throttlePad()].y = -1;
+  }
+  function setFromTouch(p, t) {
+    const r = p.el.getBoundingClientRect(), m = 0.12;
+    p.x = Math.max(-1, Math.min(1, ((t.clientX - r.left) / r.width - 0.5) / (0.5 - m)));
+    p.y = Math.max(-1, Math.min(1, -((t.clientY - r.top) / r.height - 0.5) / (0.5 - m)));
+  }
+  const inside = (el, t, pad = 20) => { const r = el.getBoundingClientRect(); return t.clientX >= r.left - pad && t.clientX <= r.right + pad && t.clientY >= r.top - pad && t.clientY <= r.bottom + pad; };
+  const padFor = t => { if (tiltMode) return null; for (const k in pads) if (inside(pads[k].el, t)) return pads[k]; return null; };
+
+  // ================================================================ tilt mode state
+  let modeLock = 0;
+  let tiltMode = false, accel = 0, accId = null, sensorsOn = false, gotEvent = false;
+  let yaw = 0, yawId = null;
+  const accEl = $('accel'), yawEl = $('yaw');
+  function setYawFromTouch(t) { const r = yawEl.getBoundingClientRect(); yaw = Math.max(-1, Math.min(1, ((t.clientX - r.left) / r.width - 0.5) / 0.42)); }
+  function setAccelFromTouch(t) { const r = accEl.getBoundingClientRect(); accel = Math.max(0, Math.min(1, 1 - (t.clientY - r.top - r.height * 0.06) / (r.height * 0.88))); }
+
+  document.addEventListener('touchstart', e => {
+    for (const t of e.changedTouches) {
+      if (tiltMode) {
+        if (accId === null && inside(accEl, t, 10)) { accId = t.identifier; accEl.classList.add('active'); setAccelFromTouch(t); }
+        else if (yawId === null && inside(yawEl, t, 14)) { yawId = t.identifier; yawEl.classList.add('active'); setYawFromTouch(t); }
+        continue;
+      }
+      const p = padFor(t); if (p && p.id === null) { p.id = t.identifier; p.el.classList.add('active'); setFromTouch(p, t); }
+    }
+    if (e.target.closest('.pad') || e.target.closest('#accel') || e.target.closest('#yaw')) e.preventDefault();
+  }, { passive: false });
+  document.addEventListener('touchmove', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === accId) setAccelFromTouch(t);
+      if (t.identifier === yawId) setYawFromTouch(t);
+      for (const k in pads) if (pads[k].id === t.identifier) setFromTouch(pads[k], t);
+    }
+    e.preventDefault();
+  }, { passive: false });
+  const end = e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === accId) { accId = null; accEl.classList.remove('active'); if (!cfg.accHold) accel = 0; }
+      if (t.identifier === yawId) { yawId = null; yawEl.classList.remove('active'); yaw = 0; }
+      for (const k in pads) { const p = pads[k];
+        if (p.id === t.identifier) { p.id = null; p.el.classList.remove('active'); p.x = 0; if (k !== throttlePad() || cfg.thrSpring) p.y = 0; } }
+    }
+  };
+  document.addEventListener('touchend', end); document.addEventListener('touchcancel', end);
+  let mp = null;   // mouse, for desktop testing
+  document.addEventListener('mousedown', e => { if (tiltMode && inside(yawEl, e, 0)) { mp = 'yaw'; setYawFromTouch(e); return; }
+    if (tiltMode && inside(accEl, e, 0)) { mp = 'acc'; setAccelFromTouch(e); return; } const p = padFor(e); if (p) { mp = p; p.id = 'm'; setFromTouch(p, e); } });
+  document.addEventListener('mousemove', e => { if (mp === 'acc') setAccelFromTouch(e); else if (mp === 'yaw') setYawFromTouch(e); else if (mp) setFromTouch(mp, e); });
+  document.addEventListener('mouseup', () => { if (mp === 'yaw') { yaw = 0; } else if (mp === 'acc') { if (!cfg.accHold) accel = 0; } else if (mp) { const k = mp === pads.L ? 'L' : 'R'; mp.id = null; mp.x = 0; if (k !== throttlePad() || cfg.thrSpring) mp.y = 0; } mp = null; });
+
+  const expo = v => { const e = cfg.expo; return (v * v * v * e + v * (1 - e)) * cfg.gain; };
+  function sticks() {
+    const tp = pads[throttlePad()];
+    return [(tp.y + 1) / 2, expo(pads.L.x), expo(cfg.radioMode === 2 ? pads.R.y : pads.L.y), expo(pads.R.x)];
+  }
+
+  // ================================================================ orientation -> heading / pitch / roll
+  // W3C: R = Rz(alpha) Rx(beta) Ry(gamma) maps device -> earth (x east, y north, z up)
+  const D2R = Math.PI / 180;
+  function rotMat(a, b, g) {
+    const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b), cg = Math.cos(g), sg = Math.sin(g);
+    return [[ca * cg - sa * sb * sg, -sa * cb, ca * sg + sa * sb * cg],
+            [sa * cg + ca * sb * sg, ca * cb, sa * sg - ca * sb * cg],
+            [-cb * sg, sb, cb * cg]];
+  }
+  const mv = (R, v) => [R[0][0] * v[0] + R[0][1] * v[1] + R[0][2] * v[2], R[1][0] * v[0] + R[1][1] * v[1] + R[1][2] * v[2], R[2][0] * v[0] + R[2][1] * v[1] + R[2][2] * v[2]];
+  const norm = v => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  let F = null, U = null;              // filtered view / up vectors in earth frame
+  let hUnwrap = 0, hPrev = null, h0 = 0, p0 = 0, r0 = 0, needCenter = true;
+  let ori = { h: 0, p: 0, r: 0 };
+  function screenAngle() { return ((screen.orientation && screen.orientation.angle) ?? window.orientation ?? 0) * D2R; }
+  let rawF = null, rawU = null;
+  function onOrient(e) {
+    if (e.alpha === null || e.beta === null) return;
+    gotEvent = true;
+    const R = rotMat(e.alpha * D2R, e.beta * D2R, e.gamma * D2R), th = screenAngle();
+    rawF = mv(R, [0, 0, -1]); rawU = mv(R, [Math.sin(th), Math.cos(th), 0]);
+  }
+  let lastOri = performance.now();
+  function updateOri() {                       // time-based filtering, independent of the sensor event rate
+    const now = performance.now(), dt = Math.min(0.1, (now - lastOri) / 1000); lastOri = now;
+    if (!rawF) return;
+    const tau = 0.01 + cfg.tsmooth * 0.18, k = 1 - Math.exp(-dt / tau);
+    if (!F) { F = rawF; U = rawU; } else { F = norm(F.map((x, i) => x + (rawF[i] - x) * k)); U = norm(U.map((x, i) => x + (rawU[i] - x) * k)); }
+    const h = Math.atan2(-F[0], F[1]);
+    if (hPrev === null) hPrev = h;
+    let d = h - hPrev; d = (d + Math.PI) % (2 * Math.PI); if (d < 0) d += 2 * Math.PI; d -= Math.PI;
+    hUnwrap += d; hPrev = h;
+    const pitch = Math.asin(Math.max(-1, Math.min(1, F[2])));
+    const right = cross(F, U);
+    const roll = Math.atan2(-right[2], U[2]);
+    if (needCenter) { h0 = hUnwrap; p0 = pitch; r0 = roll; needCenter = false; }
+    ori = { h: hUnwrap - h0, p: pitch - p0, r: roll - r0 };
+  }
+  async function enableSensors() {
+    if (!window.isSecureContext) {
+      $('sensorMsg').innerHTML = 'Le gyroscope n’est accessible qu’en lien sécurisé (https).<br>Le navigateur affichera un avertissement : touche <b>Paramètres avancés → Continuer</b>.';
+      $('sensorBtn').textContent = 'Ouvrir le lien sécurisé';
+      $('sensorBtn').onclick = () => { location.href = 'https://' + location.host + location.pathname + location.search + '#tilt'; };
+      return;
+    }
+    try {
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const r = await DeviceOrientationEvent.requestPermission(); if (r !== 'granted') throw new Error('refusé');
+      }
+      window.addEventListener('deviceorientation', onOrient);
+      sensorsOn = true; needCenter = true;
+      setTimeout(() => { if (!gotEvent) { $('sensor').classList.remove('hidden'); $('sensorMsg').textContent = 'Aucune donnée capteur : ce navigateur / appareil n’a pas de gyroscope accessible.'; } }, 1500);
+      $('sensor').classList.add('hidden'); buzz(40);
+    } catch (err) { $('sensorMsg').textContent = 'Accès aux capteurs refusé (' + err.message + '). Autorise-le dans les réglages du navigateur.'; }
+  }
+  $('sensorBtn').onclick = enableSensors;
+  $('recenter').onclick = () => { needCenter = true; send('c,recenter'); buzz(30); };
+
+  function setTilt(on, notify) {
+    tiltMode = on; document.body.classList.toggle('tiltmode', on);
+    $('mTilt').classList.toggle('on', on); $('mSticks').classList.toggle('on', !on);
+    if (on && !sensorsOn) { $('sensor').classList.remove('hidden'); if (!window.isSecureContext) enableSensors(); }
+    if (notify) { send(on ? 'c,motion' : 'c,sticks'); modeLock = performance.now() + 1500; }
+    accel = 0; yaw = 0;
+  }
+  $('mTilt').onclick = () => setTilt(true, true);
+  $('mSticks').onclick = () => setTilt(false, true);
+
+  // attitude display
+  const cv = $('attc'), cx = cv.getContext('2d');
+  function drawAtt() {
+    const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+    if (cv.width !== Math.round(r.width * dpr)) { cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr); }
+    const W = cv.width, H = cv.height; cx.setTransform(1, 0, 0, 1, 0, 0); cx.clearRect(0, 0, W, H);
+    cx.save(); cx.translate(W / 2, H / 2); cx.rotate(-ori.r);
+    const py = ori.p * H * 0.9;
+    cx.fillStyle = '#16324a'; cx.fillRect(-W, -2 * H + py, 2 * W, 2 * H);
+    cx.fillStyle = '#2b2218'; cx.fillRect(-W, py, 2 * W, 2 * H);
+    cx.strokeStyle = 'rgba(255,255,255,.8)'; cx.lineWidth = 2 * dpr; cx.beginPath(); cx.moveTo(-W, py); cx.lineTo(W, py); cx.stroke();
+    cx.strokeStyle = 'rgba(255,255,255,.35)'; cx.lineWidth = 1 * dpr; cx.font = `${11 * dpr}px system-ui`; cx.fillStyle = 'rgba(255,255,255,.6)';
+    for (let a = -60; a <= 60; a += 15) { if (!a) continue; const y = py - a * D2R * H * 0.9; cx.beginPath(); cx.moveTo(-40 * dpr, y); cx.lineTo(40 * dpr, y); cx.stroke(); cx.fillText(a + '°', 46 * dpr, y + 4 * dpr); }
+    cx.restore();
+    cx.strokeStyle = '#ffb020'; cx.lineWidth = 3 * dpr; cx.beginPath();
+    cx.moveTo(W / 2 - 60 * dpr, H / 2); cx.lineTo(W / 2 - 18 * dpr, H / 2); cx.lineTo(W / 2, H / 2 + 12 * dpr); cx.lineTo(W / 2 + 18 * dpr, H / 2); cx.lineTo(W / 2 + 60 * dpr, H / 2); cx.stroke();
+    cx.fillStyle = 'rgba(0,0,0,.45)'; cx.fillRect(0, 0, W, 26 * dpr);
+    cx.fillStyle = '#e9eef3'; cx.font = `${13 * dpr}px system-ui`; cx.textAlign = 'center';
+    cx.fillText(`CAP ${(-ori.h / D2R).toFixed(0)}°   ·   VISÉE ${(ori.p / D2R).toFixed(0)}°   ·   VIRAGE ${(ori.r / D2R).toFixed(0)}°`, W / 2, 18 * dpr);
+    cx.textAlign = 'left';
+  }
+
+  function draw() {
+    if (tiltMode) {
+      drawAtt();
+      $('accfill').style.height = (accel * 100) + '%'; $('acctxt').textContent = Math.round(accel * 100) + '%';
+      $('yawknob').style.left = (50 + yaw * 42) + '%';
+      return;
+    }
+    for (const k in pads) { const p = pads[k]; p.knob.style.left = (50 + p.x * 38) + '%'; p.knob.style.top = (50 - p.y * 38) + '%'; }
+    const [t, y, pi, r] = sticks();
+    $('thrbar').style.height = (t * 84) + '%';
+    $('valL').textContent = cfg.radioMode === 2 ? `${Math.round(t * 100)}%  ${y.toFixed(2)}` : `${pi.toFixed(2)}  ${y.toFixed(2)}`;
+    $('valR').textContent = cfg.radioMode === 2 ? `${pi.toFixed(2)}  ${r.toFixed(2)}` : `${Math.round(t * 100)}%  ${r.toFixed(2)}`;
+  }
+
+  // ================================================================ websocket
+  let ws = null, open = false, seq = 0, tele = {};
+  const send = m => { if (open) try { ws.send(m); } catch (e) {} };
+  function connect() {
+    ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?k=${encodeURIComponent(K)}`);
+    ws.onopen = () => { open = true; $('overlay').classList.add('hidden'); $('dot').classList.add('ok');
+      send('d,' + (navigator.userAgentData?.platform || navigator.platform || 'phone')); if (tiltMode) send('c,motion'); };
+    ws.onclose = () => { open = false; $('dot').classList.remove('ok'); $('state').textContent = 'OFFLINE';
+      $('overlay').classList.remove('hidden'); $('ovmsg').textContent = 'Connexion perdue – nouvelle tentative…'; setTimeout(connect, 800); };
+    ws.onerror = () => {};
+    ws.onmessage = e => {
+      const m = e.data;
+      if (m[0] === 't') { try { tele = JSON.parse(m.slice(1)); } catch (x) {} updateTele(); }
+      else if (m.startsWith('q,')) { const ms = performance.now() - parseFloat(m.slice(2)); $('lat').textContent = Math.round(ms) + ' ms'; send('l,' + ms.toFixed(1)); }
+    };
+  }
+  let lastState = '';
+  function updateTele() {
+    const st = tele.state || 'IDLE', fly = !!tele.flying;
+    const map = { FLY: ['ARMÉ', 'armed'], WAIT_ARM: [tiltMode ? 'LÂCHE L’ACCÉL.' : 'GAZ EN BAS', 'disarmed'], COUNTDOWN: ['DÉCOMPTE ' + (tele.cd || ''), 'disarmed'],
+                  CRASHED: ['CRASH – ⟲', 'disarmed'], IDLE: ['PRÊT', ''] };
+    const [txt, cls] = fly ? (map[st] || [st, '']) : map.IDLE;
+    const se = $('state'); se.textContent = txt; se.className = 'pill ' + cls;
+    $('mode').textContent = tele.mode || 'ACRO';
+    { const b = +(tele.boost || 1); $('spdV').textContent = '×' + (b >= 10 || b === Math.round(b) ? Math.round(b) : b.toFixed(2).replace(/0$/, ''));
+      $('spdV').classList.toggle('on', Math.abs(b - 1) > 0.01); }
+    $('mode').style.display = tele.mode === 'MOTION' ? 'none' : '';
+    if ((tele.mode === 'MOTION') !== tiltMode && performance.now() > modeLock) setTilt(tele.mode === 'MOTION', false);
+    $('rec').classList.toggle('on', !!tele.rec);
+    $('spd').textContent = Math.round(tele.speed || 0); $('alt').textContent = (tele.alt || 0).toFixed(1);
+    $('frm').textContent = tele.rec && fly ? '· f' + tele.frame : '';
+    const f = $('fly'); f.textContent = fly ? '■ STOP' : '▶ FLY'; f.classList.toggle('stop', fly);
+    const now = fly ? st : 'IDLE';
+    if (now !== lastState && now === 'FLY') buzz([60, 40, 60]);
+    if (now !== lastState && now === 'CRASHED') buzz([250, 80, 250]);
+    else if (tele.impact > 1) buzz(Math.min(200, 20 + tele.impact * 12));
+    lastState = now;
+  }
+  $('fly').onclick = () => send(tele.flying ? 'c,stop' : 'c,fly');
+  $('reset').onclick = () => send('c,reset');
+  $('fire').onclick = () => { send('c,fire'); buzz(25); };
+  $('mode').onclick = () => send('c,mode');
+  $('rec').onclick = () => send('c,rec');
+  $('spdUp').onclick = () => { send('c,speed+'); buzz(15); };
+  $('spdDn').onclick = () => { send('c,speed-'); buzz(15); };
+  $('spdV').onclick = () => { send('c,speed1'); buzz(15); };
+
+  setInterval(() => {
+    updateOri();
+    if (tiltMode) send(`o,${ori.h.toFixed(4)},${ori.p.toFixed(4)},${ori.r.toFixed(4)},${accel.toFixed(3)},${yaw.toFixed(3)},${seq++}`);
+    else { const [t, y, p, r] = sticks(); send(`s,${t.toFixed(4)},${y.toFixed(4)},${p.toFixed(4)},${r.toFixed(4)},${seq++}`); }
+  }, 16);
+  setInterval(() => send('p,' + performance.now().toFixed(1)), 1000);
+  (function loop() { draw(); requestAnimationFrame(loop); })();
+  try { navigator.wakeLock && navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {}
+  relabel(); connect();
+  if (location.hash === '#tilt') setTimeout(() => setTilt(true, true), 300);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,203 @@
+# FPV Drone 2.8.0 – extension Blender 4.2 → 5.x (testée 5.3)
+
+Pilote une caméra comme un drone FPV (radiocommande, manette ou clavier) et enregistre le vol en keyframes.
+Réécriture complète de *Quadcopter FPV Simulator* (WizardOfRobots, 2021), sous licence GPL-3.0-or-later.
+
+Testée sur Blender **5.0.1, 5.1.2 et 5.3.0**. QR code : bibliothèque *QR Code generator* de Project Nayuki (MIT), incluse.
+
+## Installation
+Glisse `fpv_drone-2.8.0.zip` dans la fenêtre de Blender, ou *Edit › Preferences › Get Extensions › ⌄ › Install from Disk*.
+Le panneau apparaît dans la Vue 3D › barre latérale (N) › onglet **FPV Drone**.
+
+Aucune installation pip ni pygame n'est nécessaire sous Windows.
+
+## Nouveautés 2.8
+- **Revoler la prise** (panneau Enregistrement) : pendant l'enregistrement, les sticks sont sauvegardés sur le drone (courbes *FPV Inputs*, modifiables dans le Graph Editor). **Revoler la prise** rejoue ces entrées avec les réglages ACTUELS : change le type de drone, les rates, le vent, le multiplicateur de vitesse, ou retouche une courbe de gaz, et le vol est recalculé. Avec les mêmes réglages, la prise revient à l'identique (écart < 0,01 mm). Les tirs, les R (retour au départ) et les recentrages du téléphone sont rejoués aussi.
+- **Lissage après le vol** : lisse la trajectoire et l'orientation (gaussien, en secondes) et retire les vibrations de la caméra, sans changer le timing. Annulable.
+- **Rates « Actual »** (Betaflight 4.3+) en plus des rates Betaflight classiques : sensibilité au centre, vitesse max et expo, en °/s.
+- **Préréglages** : bouton à côté de *Type* pour le drone (type, caractéristiques, rates, caméra, vitesse), et en-tête du panneau Manette pour les manettes. Enregistrés dans tes préférences, donc disponibles dans tous les fichiers. Préréglages manette fournis : radios en ordre AETR / TAER / Mode 1, Xbox, manette USB / PlayStation, clavier.
+- **Modèle de drone 3D** (*Drone détaillé*, par défaut pour les nouveaux rigs) : châssis, moteurs, hélices qui tournent avec la timeline, batterie, caméra, à la taille du châssis réglé. Il est masqué en vue FPV et visible depuis l'extérieur. La caméra FPV est placée devant les hélices, rien du drone n'apparaît à l'image.
+- **Parcours d'entraînement** (panneau Échelle, collisions et crash) : une boucle de portes, des piliers en slalom et un passage en piqué, autour du curseur 3D.
+- **Projectiles** (expérimental) : F, clic gauche ou bouton **● TIR** du téléphone. Les balles rebondissent sur la scène et sont enregistrées avec la prise.
+- **Correction** : avec le Camera Culling activé et aucune grosse géométrie dans la scène, le vol s'arrêtait tout de suite (« FPV error »).
+
+## Nouveautés 2.7
+- **Interface en français** : bouton **FR / EN** en haut à droite du panneau FPV Drone (ou *Langue et mises à jour*). *Auto* suit la langue de Blender, *Français* force le français même dans un Blender en anglais. Panneaux, réglages, info-bulles, messages et OSD sont traduits.
+- **Multiplicateur de vitesse** (×0,1 à ×50) : le drone traverse la scène N fois plus vite avec exactement le même pilotage. En vol : **molette**, **+ / -** ou **Page haut / bas** ; sur le téléphone : boutons **− ×1 +**. L'OSD affiche *VITESSE ×N*. Limites relevées (vitesse Motion jusqu'à 1000 km/h, poussée/poids 60...) et nouveau type **Racer 5"** (~180 km/h réels).
+- **Camera Culling** (panneau du même nom, activé par défaut) : pendant le vol, ce que la caméra ne voit pas est masqué (plus calculé, plus affiché, plus d'ombres), puis réapparaît avant d'entrer dans l'image. Les marges s'élargissent avec la vitesse de rotation. Les changements sont regroupés en lots (une seule mise à jour de scène par lot), espacés selon leur coût mesuré. Ne touche jamais aux lumières, caméras, simulations (fluides, tissus, corps rigides) ni à ce que tu as masqué toi-même. Tout est restauré à l'arrêt, sélection comprise.
+- **Correction du crash au REC** : le crash venait des addons *autocam* et *rbc_addon_pro* (leur handler supprime une scène pendant une mise à jour). Avec *Jouer la scène*, ils tournaient à chaque image : 7 img/s puis plantage. **Mettre en pause les autres addons** (panneau Performance, activé par défaut) détache leurs handlers pendant le vol et les remet à la fin. La lecture de la timeline est aussi arrêtée au décollage.
+- **Enregistrement en un bloc** : plus de clé insérée à chaque image pendant le vol ; la prise est écrite d'un coup à l'arrêt (même résultat, sans ralentir le vol).
+- **Démarrage du vol** : 0,13 s au lieu de 8,9 s sur une scène de 3 000 objets (recherche du sol par nos propres BVH, boîtes calculées en numpy, arbres de collision pré-construits pendant le décompte et devant le drone).
+- **Overlays allégés** pendant le vol (statistiques, contour de sélection, extras, cavity...) et rafraîchissement de la seule zone 3D. Les panneaux ne redétectent plus les manettes à chaque affichage.
+- **Distance d'affichage** : c'est maintenant le plan de coupure de la caméra pendant le vol. Gratuit, et ça marche sur n'importe quelle scène.
+- **Optimize Scene** plus rapide (découpage en un seul tri).
+- **Mises à jour automatiques** depuis les releases GitHub (dépôt réglable dans les préférences de l'extension, *lburdier/fpv-drone* par défaut). Vérification au plus une fois par jour, installation automatique hors vol (désactivable), respect de *Autoriser l'accès en ligne*. Publier une version = créer une release `vX.Y.Z` avec le zip de l'extension en pièce jointe.
+
+## Démarrage rapide
+1. Place le curseur 3D au point de départ, regarde dans la direction de vol, puis clique sur **+** (*Create FPV Rig*).
+2. Dans **Controller**, choisis ton entrée (*Auto*, *Radio / Joystick*, *Xbox Gamepad* ou *Keyboard*) ou un preset.
+3. Clique sur **Test Controller** : bouge les sticks et regarde quels axes bougent. Sinon, utilise le bouton ● (*Learn*) de chaque voie et bouge uniquement ce stick, vers le haut ou vers la droite.
+4. Clique sur **Fly**, baisse les gaz pour armer, puis vole. **Échap** ou clic droit arrête le vol, **R** ramène le drone au point de départ.
+5. Pour garder le vol, active **Record** puis lance **Fly + Record**. Une clé est posée par image, à partir de *Start Frame*.
+
+## Piloter avec le téléphone (Phone Link)
+1. Le PC et le téléphone doivent être sur le **même Wi-Fi**.
+2. Ouvre le panneau **FPV Drone › Phone** et clique sur **Start Phone Link**. Un QR code s'affiche en haut à droite de la vue 3D.
+3. Scanne-le avec l'appareil photo du téléphone, ou copie le lien (bouton 📋) et envoie-le toi.
+4. Au premier lancement, Windows demande d'autoriser Blender sur le réseau : accepte pour les **réseaux privés**.
+5. Tourne le téléphone en paysage et touche ⛶ pour le plein écran. Le bouton **▶ FLY** lance le vol directement depuis le téléphone, sans toucher au PC.
+
+La page affiche deux sticks tactiles en Mode 2 (Mode 1 disponible dans ⚙). Les gaz ne reviennent pas au centre, comme sur une vraie radio. Elle affiche aussi la latence et l'état (armé ou gaz en bas), la vitesse, l'altitude et le numéro d'image enregistrée. Les boutons sont FLY/STOP, ⟲ (retour au départ), ACRO/ANGLE et REC. Dans ⚙ tu règles l'expo, la sensibilité et la vibration.
+
+- **Sécurité** : le lien contient une clé aléatoire, et seul un téléphone qui a la clé peut piloter. Une nouvelle clé est générée à chaque démarrage du lien.
+- **Failsafe** : si le téléphone ne répond plus pendant 1,5 s, le vol s'arrête. La prise déjà enregistrée est conservée.
+
+## Mode Tilt / Motion (le téléphone pilote la caméra)
+Ce mode fonctionne comme le Motion Controller de DJI : tu pointes le téléphone, le drone regarde et vole dans cette direction.
+1. Sur le téléphone, touche **📱 Tilt** (dans Blender, ça passe automatiquement en mode *Motion*).
+2. Le gyroscope n'est accessible qu'en **lien sécurisé (https)**. La page propose « Ouvrir le lien sécurisé ». Le navigateur affiche un avertissement, car le certificat est généré par ton PC : touche **Paramètres avancés → Continuer**. Cette étape n'est à faire qu'une fois.
+3. Touche **Activer les capteurs**. Sur iPhone, autorise l'accès au mouvement.
+4. Tiens le téléphone à l'horizontale, comme un écran, et touche **⌖ Recentrer**.
+5. Les commandes :
+   - **Pointer vers le haut ou le bas** fait lever ou baisser la caméra. Avec l'accélérateur, le drone monte ou descend.
+   - **Incliner le téléphone à gauche ou à droite**, comme un volant, fait tourner le drone. Option *Point to Turn* : le drone suit directement le cap du téléphone.
+   - **L'accélérateur** (zone verte à droite) règle la vitesse. Relâché, le drone freine et reste en vol stationnaire.
+   - **Le curseur ROTATION** (sous l'horizon, pour le pouce gauche) fait pivoter le drone sur lui-même, à l'arrêt comme en vol. Il revient au centre quand tu le lâches. Il s'utilise en même temps que l'accélérateur (deux doigts) et s'ajoute à l'inclinaison du téléphone. Option *Slider Only* : l'inclinaison ne sert plus qu'à viser, seul le curseur fait tourner. La vitesse de rotation se règle avec *Rotation Speed*.
+
+Les mouvements sont filtrés, puis passent par un pilote automatique qui commande la vraie physique : inclinaison pour accélérer, inertie, latence des moteurs. La caméra est stabilisée comme une nacelle, horizon toujours droit. Les réglages sont dans le panneau **Motion (Phone Tilt)** : vitesse max, accélération max, inclinaison max, vitesse de virage et lissage.
+
+## Réalisme
+Le menu **Type** charge un profil de drone complet :
+| Type | Vitesse de pointe | Sensation |
+|---|---|---|
+| Cinewhoop 3" | ~50 km/h | Flottant, lent, pour l'intérieur |
+| Freestyle 5" | ~130-150 km/h | Nerveux, rotations sèches |
+| Cinematic 7" | ~115 km/h | Grandes courbes fluides |
+| Cinelifter | ~70 km/h | Lourd, beaucoup d'inertie |
+
+Le modèle de vol simule :
+- le **temps de réponse des moteurs** ;
+- la **perte de poussée** quand l'air arrive vite sur les hélices ;
+- une **traînée différente** à plat et de profil, qui donne les courbes « portées » ;
+- une **accélération angulaire limitée**, qui donne le poids du drone ;
+- le **prop-wash**, c'est-à-dire les secousses quand on redescend dans son propre souffle ;
+- la **turbulence et le vent**, l'**effet de sol**, et en option l'**affaissement de la batterie**.
+
+Décocher **Realism** revient au modèle simple.
+
+**Horizon Lock** (panneau Camera) stabilise le roulis de la caméra, comme Gyroflow ou ReelSteady. À 1, l'horizon reste parfaitement à plat ; c'est idéal pour des plans cinéma.
+
+## Entrées
+| Entrée | Matériel | Remarque |
+|---|---|---|
+| Radio / Joystick (WinMM) | Radiocommande EdgeTX/OpenTX en mode joystick USB, joystick, la plupart des manettes | Windows, aucune dépendance |
+| Xbox Gamepad (XInput) | Manettes Xbox ou compatibles | Windows, aucune dépendance |
+| Pygame | Tout joystick | Seulement si pygame est déjà installé dans le Python de Blender (macOS / Linux) |
+| Phone | Ton téléphone (page web, même Wi-Fi) | Voir *Phone Link* |
+| Keyboard | — | AZERTY : Z/S gaz, Q/D lacet. QWERTY : W/S, A/D. Les deux par défaut. Flèches = tangage et roulis, Shift = stick à fond, Ctrl = fin |
+
+## Vol
+- **Acro** : vraie physique FPV, les sticks commandent une vitesse de rotation. Les rates sont celles de Betaflight (RC Rate, Super Rate, Expo) ; le panneau affiche la vitesse maximale en deg/s.
+- **Angle** : le drone s'auto-stabilise et les sticks donnent l'inclinaison. C'est plus simple au clavier ou à la manette.
+- **Thrust/Weight** : en vol stationnaire, les gaz valent environ 1/TWR. **Air Drag** fixe la vitesse de pointe.
+- **Time Scale** : 0.5 permet de voler au ralenti ; l'animation enregistrée est alors rejouée 2× plus vite. C'est pratique pour des passages très serrés.
+- **Meters per Unit** : taille réelle d'une unité Blender. Par exemple, mets 0.6 pour la scène NYC à l'échelle 1.68.
+
+## Enregistrement
+- Le drone (rig) reçoit des clés `location` et `rotation_quaternion` à chaque image. Les quaternions sont gardés continus, donc il n'y a pas de saut de 360°.
+- La vibration de la caméra est enregistrée sur la caméra enfant.
+- **Play Scene** fait avancer la timeline pendant le vol, pour que les objets animés (voitures, etc.) bougent en même temps.
+- **Replace Previous Take** efface la prise précédente à partir de la *Start Frame*.
+
+## Performance (panneau Performance)
+Le calcul du drone est léger : environ 0,15 ms par image. Ce qui fait ramer, c'est l'affichage d'une scène lourde dans la vue 3D. Pendant le vol, et seulement pendant le vol, l'addon :
+- passe la vue en **Solid** (option *Fast*, par défaut), ou garde le rendu mais en basse résolution avec des volumes allégés (option *Light Preview*) ;
+- **masque les volumes** (nuages, vapeur) ;
+- active **Simplify** ;
+- met à jour la vue au **rythme de l'écran** (*Update Rate : Screen Refresh*, par défaut), détecté automatiquement (60, 144 Hz…).
+
+Tout est restauré automatiquement à l'arrêt. L'OSD affiche les **fps** en vert, orange ou rouge. Le lien téléphone ne redessine plus la vue 3D en permanence.
+
+**Optimize Scene** (bouton du panneau) découpe les gros meshes, comme une ville OSM d'un seul bloc, en tuiles de 250 m (8 × 8 au maximum par objet). Les UV, couleurs et matériaux sont conservés, et les instances partagent toujours les mêmes meshes. Les originaux sont seulement masqués : **Restore** les remet et supprime les tuiles.
+**Draw Distance** (0 = désactivé) coupe l'affichage au-delà de cette distance pendant le vol (plan de coupure de la caméra) ; avec le Camera Culling, les objets aussi loin sont aussi masqués. Sur la scène NY test : 254 tuiles, environ 240 masquées au sol, et **0,17 ms de calcul par image** avec les collisions.
+
+## Fluidité (2.6)
+- **Plus de saccades** : la simulation tourne exactement en temps réel. Avant, une fraction de pas était perdue à chaque image : environ 10 % de lenteur, avec un rythme irrégulier. La pose affichée est interpolée à l'instant exact de l'affichage (écart mesuré < 0,03 ms, même avec un timer irrégulier).
+- **Cadence verrouillée** (2.6.1), comme la lecture d'animation : chaque image affichée fait avancer le vol d'exactement une période d'écran (1/60 s, 1/144 s…). Les images sont donc parfaitement régulières, même si le timer de Windows arrive en retard ou en avance. Une image vraiment perdue est rattrapée d'un coup entier. Un gel (sauvegarde, Alt-Tab) ne provoque pas d'accéléré.
+- Sous Windows, la précision du timer passe à 1 ms pendant le vol, au lieu de 15,6 ms.
+- **Diagnostic** : à l'arrêt du vol, Blender affiche les images/s réelles, l'intervalle médian et le pire, et le nombre d'à-coups. Le détail est ajouté dans le texte *FPV_Perf_Log* (éditeur de texte).
+- **RC Smoothing** (panneau Controller), comme dans Betaflight : les commandes du téléphone arrivent par paquets en Wi-Fi, elles sont lissées pour que le drone ne bouge jamais par à-coups. 0 = auto (30 ms téléphone, 40 ms clavier, 10 ms radio).
+- *Play Scene* ne force plus de recalcul complet de la scène à chaque image, et l'enregistrement non plus.
+- Pas de pause du ramasse-miettes Python pendant le vol. *Draw Distance* répartit les apparitions de tuiles sur plusieurs images.
+
+## Propriétés physiques (panneau Physical Specs)
+Le drone se règle avec de vraies valeurs ; le simulateur en déduit ses coefficients en direct :
+- **Masse (g)** et **poussée par moteur (g)** × **nombre de moteurs** donnent le rapport poussée/poids.
+- **Taille du châssis (mm)** et **Inertie** (où est la masse : 0,3 compact, 0,6 normal, 1+ grosse caméra ou ducts) donnent la vitesse de rotation.
+- **Surface frontale / surface du dessus (cm²)** donnent la traînée : vitesse max, et la façon dont il « accroche l'air » dans les piqués.
+- Le panneau affiche le poussée/poids, les gaz de vol stationnaire, la vitesse max estimée et l'accélération en rotation. Il prévient si le drone est trop lourd pour décoller.
+- Les types (Whoop, Freestyle, Cinématique, Cinelifter) remplissent ces valeurs. Exemple : un 5" de 650 g avec 4 × 1300 g donne poussée/poids 8 et environ 168 km/h.
+
+## Physics Cam, façon Polyfjord
+La méthode de Polyfjord, en mieux : une **cible animée** tire le drone comme un ressort. Le drone n'est pas un simple corps rigide : c'est un vrai quad avec la masse, la poussée, la traînée et l'inertie de *Physical Specs*. Pour accélérer, il doit d'abord pencher. Il s'incline donc dans les virages, se cabre pour freiner, prend du retard et dépasse un peu la trajectoire, et rebondit sur les bâtiments.
+1. Une cible : **New Target** (un empty à animer avec I), **Target from Curve** (sélectionne une courbe : la cible la parcourt sur la plage d'images, avec *Ease In/Out*), ou **Target from My Take** (ta prise pilotée devient la cible : la bake la re-vole proprement).
+2. Réglages :
+   - **Pull** : souple ou serré.
+   - **Damping** : en dessous de 1, ça dépasse et oscille de façon organique.
+   - **Look Ahead** : le nez vise où sera la cible.
+   - **Yaw Smoothness** : vitesse des changements de cap.
+   - **Bank** : 1 = attitude réelle du quad, 0 = horizon stabilisé.
+   - **Pilot Limit**, **Start At**, **Seed**.
+3. **Bake Physics Cam** : une clé par image, calculée à 500 Hz et alignée sur les images. Aucune saccade possible au rendu. Environ 0,1 s pour 20 s de plan.
+Le calcul utilise aussi les collisions, les vibrations, *Horizon Lock* et l'uptilt de la caméra.
+
+## FPV Look (panneau FPV Look)
+**Apply FPV Look** ajoute, de façon réversible :
+- flou de mouvement (obturateur 180°) ;
+- distorsion grand-angle d'action cam ;
+- aberration chromatique ;
+- bloom sur les hautes lumières, léger piqué, vignette.
+Sous Blender 5, c'est un groupe de nœuds compositor *FPV_Look* ; sous Blender 4, ce sont des nœuds *FPV_Look_…* insérés avant *Composite*. Dans les deux cas, ils sont modifiables à la main. **X** retire le look et restaure les réglages précédents.
+
+## Optimize Blender (panneau Performance)
+Un clic règle Blender pour la performance. Les valeurs d'origine sont sauvegardées, et le bouton ↺ remet tout comme avant.
+- Backend **OpenGL** (le plus stable en 5.0 ; Blender doit redémarrer si tu étais en Vulkan).
+- Anti-aliasing du viewport en **FXAA** (au lieu de 8 échantillons).
+- Fils d'overlay non lissés.
+- Textures du viewport limitées à 2048 px.
+- Subdivision sur GPU.
+- Shaders EEVEE compilés dans des processus séparés (pas de gel quand un matériau compile ; option de Blender 4.4+).
+- Changements de vue instantanés, 16 annulations au lieu de 32.
+- Dans le fichier ouvert : EEVEE viewport à 4 échantillons. Le rendu final n'est pas touché.
+Sous Blender 5.0.0, le panneau rappelle de passer en 5.0.1 ou plus : la première version 5 a des bugs connus.
+
+## Pendant le vol
+Tous les raccourcis Blender sont bloqués. Seuls **Échap** ou clic droit (arrêter), **R** (retour au départ) et les touches de pilotage restent actifs.
+
+## Collisions, impacts et crash (2.5)
+- Le drone est une **sphère de collision** (rayon réglable) testée contre les vrais meshes avec un BVH mis en cache et une grille spatiale. Seuls les bâtiments proches sont testés, le coût reste donc constant même sur une ville entière.
+- Un **rayon anti-traversée** est lancé à chaque sous-pas : même à 70 m/s, le drone ne passe pas à travers un mur fin ou un plan sans épaisseur.
+- **Impact réaliste** : rebond (restitution), frottement sur la surface (le drone glisse le long d'un mur au lieu de s'y coller) et rotation induite par le choc. Un choc fait **trembler la caméra**, et l'OSD affiche *IMPACT x m/s*.
+- **Crash Mode** :
+  - *Crash* (par défaut) : au-delà de la *Crash Speed* (9 m/s par défaut), les moteurs se coupent et le drone tombe en tournoyant jusqu'au sol (*CRASHED*). **R** le remet au départ.
+  - *Bounce* : le drone rebondit et on continue à voler.
+- Si on arrête le vol alors que le drone est retourné, il est remis à plat au vol suivant (le cap est conservé).
+- **Floor : Auto** (par défaut) détecte le vrai sol sous le drone, même si la scène est sous Z = 0. *Fixed Height* et *Off* sont aussi disponibles.
+- Les volumes (nuages, vapeur), les objets affichés en *Bounds* ou *Wire* et les objets non rendus sont traversés.
+- Le téléphone vibre et affiche *CRASHED* en cas de crash.
+
+## Corrections 2.2
+- Le drone restait « collé » quand la scène était sous Z = 0 : le sol était fixé à 0. Il est maintenant détecté automatiquement.
+- Le drone était bloqué par des boîtes invisibles (volumes de nuages ou de vapeur). Ces objets sont maintenant ignorés.
+- Après une prise enregistrée, « Play Scene » ramenait le drone sur l'ancienne trajectoire. L'animation du drone est maintenant neutralisée pendant le vol et restaurée à la fin.
+- Dans les scènes lourdes, la synchronisation de la timeline s'adapte pour que le vol reste en temps réel.
+- Les images enregistrées sont échantillonnées à l'instant exact de chaque frame : plus de micro-saccades.
+
+## Changements par rapport à l'addon d'origine
+- Format **extension** (`blender_manifest.toml`), compatible 4.2 → 5.x. Plus de `__init__` d'opérateur, qui casse en 4.4+, et plus de `pip install` au lancement.
+- Lecture directe WinMM / XInput via `ctypes`, sans pygame.
+- Physique à pas fixe de 500 Hz, rates Betaflight, mode Angle, traînée, collisions.
+- Enregistrement aligné exactement sur les images. L'original posait toutes ses clés sur la même image.
+- Rig dédié : corps orienté +Y, caméra inclinée vers le haut (uptilt), proxy filaire. On peut aussi voler n'importe quel objet ou une caméra seule.
+- OSD : sticks, gaz, vitesse, altitude, horizon, REC, état armé ou désarmé.
+- Apprentissage des axes, test en direct, presets.
