@@ -165,6 +165,7 @@ class FPV_PT_controller(_Sub, bpy.types.Panel):
                 col = box.column(align=True)
                 col.prop(s, "trigger_speed")
                 col.prop(s, "trigger_step")
+                box.prop(s, "trigger_only")
                 _label(box, "In flight: D-pad up / down (or Home / End) = R2 power + / -", 'INFO')
                 _label(box, "Throttle stick: climb / descend while R2 flies forward", 'INFO')
             else:

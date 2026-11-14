@@ -118,6 +118,10 @@ class FPV_Settings(bpy.types.PropertyGroup):
                                              "the speed (half pressed = half the speed), held like a cruise control. "
                                              "Change it in flight with D-pad up / down (or Home / End)")
     axis_backward: IntProperty(name="Backward Axis", default=4, min=0, max=7, description="L2 / LT on a PS or Xbox pad")
+    trigger_only: BoolProperty(name="Only R2 Moves Forward", default=True,
+                               description="With the triggers on: the pitch stick no longer moves the drone forward / "
+                                           "backward (no creeping from a drifting stick) and releasing R2 brakes to a "
+                                           "stop instead of coasting. Only R2 / L2 fly forward / backward")
     trigger_step: FloatProperty(name="Power Step (km/h)", default=10.0, min=1.0, max=100.0,
                                 description="R2 power change for each press of D-pad up / down (or Home / End) in flight")
     # ---------------------------------------------------------------- smooth camera

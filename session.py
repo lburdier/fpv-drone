@@ -223,6 +223,7 @@ class FlightSession:
         self.trig_f = 0.0                   # same, smoothed like the sticks
         self.trig_i = 0.0                   # speed controller integral (pitch units)
         self.trig_target = None             # km/h shown on the OSD while a trigger is pressed
+        self.trig_hold = False              # 'Only R2 moves forward': R2 released = forward speed held at 0
         self.power_clock = -100.0           # last in-flight change of the R2 power (OSD confirmation)
         self.raw = [0.0] * 8
         self.crashed_t = 0.0
@@ -327,6 +328,9 @@ class FlightSession:
                 return None
             self.sticks = st
             self.trig = b.trigger() if hasattr(b, "trigger") else 0.0
+            # re-fly of a take flown with 'Only R2 moves forward': same braking when R2 is released
+            self.trig_hold = (self.replay is not None and s.use_triggers and getattr(s, "trigger_only", True)
+                              and s.flight_mode in ('ANGLE', 'CINE'))
             self.raw = [st[3], st[2], st[0] * 2 - 1, st[1], 0, 0, 0, 0]
             return st
         if isinstance(b, inputs.KeyboardBackend):      # fixed layout, ignore the joystick mapping
@@ -353,12 +357,16 @@ class FlightSession:
         pitch = flight.apply_deadband(ax(s.axis_pitch, s.inv_pitch), db)
         roll = flight.apply_deadband(ax(s.axis_roll, s.inv_roll), db)
         self.trig = 0.0
+        self.trig_hold = False
         if s.use_triggers and s.flight_mode in ('ANGLE', 'CINE'):   # R2 forward / L2 backward, by how far pressed
             fwd = (ax(s.axis_forward, False) + 1.0) * 0.5
             back = (ax(s.axis_backward, False) + 1.0) * 0.5
             # Angle: cruise-control speed handled in the physics step. Smooth: forward speed added to the
             # pitch stick's. In both the throttle stick still climbs / descends at the same time.
             self.trig = flight.apply_deadband(fwd, 0.04) - flight.apply_deadband(back, 0.04)
+            if getattr(s, "trigger_only", True):
+                pitch = 0.0                             # only R2 / L2 fly forward / backward
+                self.trig_hold = True
         self.sticks = (max(0.0, min(1.0, thr)), yaw, pitch, roll)
         return self.sticks
 
@@ -535,7 +543,8 @@ class FlightSession:
         """R2 / L2 in Angle mode: the pressure sets a forward (or backward) SPEED, held like a cruise control.
         Half pressed = half of Trigger Max Speed. The pitch stick still adds on top."""
         tr = self.trig_f
-        if abs(tr) < 0.01:
+        idle = abs(tr) < 0.01
+        if idle and not self.trig_hold:
             self.trig_i = 0.0
             self.trig_target = None
             self.trig_vprev = None
@@ -567,12 +576,17 @@ class FlightSession:
         self.trig_vprev = v_f
         self.trig_a = getattr(self, "trig_a", 0.0)
         self.trig_a += (a_f - self.trig_a) * 0.05
-        cmd = pitch + ff + err * 0.09 - self.trig_a * 0.03 + self.trig_i
+        kp, kd = (0.22, 0.05) if idle else (0.09, 0.03)          # R2 released: firmer brake to a stop
+        cmd = pitch + ff + err * kp - self.trig_a * kd + self.trig_i
         # slow integral (the feed-forward does the work), frozen while the command is saturated: no wind-up,
         # so no overshoot / slow oscillation after a big change of speed
-        if abs(cmd) < 1.0 or (cmd > 0.0) != (err > 0.0):
+        if idle:
+            # R2 released ('Only R2 moves forward'): brake to 0 with P + D only. At rest there is no drag to
+            # trim, and the integral wound up during the cruise made it overshoot backwards for seconds
+            self.trig_i = 0.0
+        elif abs(cmd) < 1.0 or (cmd > 0.0) != (err > 0.0):
             self.trig_i = max(-0.3, min(0.3, self.trig_i + err * SUBSTEP * 0.08))
-        self.trig_target = abs(c) * self.s.trigger_speed * p.boost
+        self.trig_target = None if idle else abs(c) * self.s.trigger_speed * p.boost
         return max(-1.0, min(1.0, cmd))
 
     def event(self, kind):

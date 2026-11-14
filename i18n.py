@@ -812,6 +812,8 @@ FR = {
     '   Home / End: R2 power': '   Origine / Fin : puissance R2',
     'D-pad up / down': 'Croix haut / bas',
     'R2 power + / -': 'puissance R2 + / -',
+    'Only R2 Moves Forward': 'Seul R2 fait avancer',
+    "With the triggers on: the pitch stick no longer moves the drone forward / backward (no creeping from a drifting stick) and releasing R2 brakes to a stop instead of coasting. Only R2 / L2 fly forward / backward": "Avec les gâchettes : le stick de tangage ne fait plus avancer / reculer le drone (plus de dérive d'un stick usé) et relâcher R2 freine jusqu'à l'arrêt au lieu de glisser. Seules R2 / L2 font avancer / reculer",
     'Bank (Roll)': 'Roulis (pencher)',
     "Tilt the phone sideways: the drone rolls on its side like the phone and slides that way, the camera tilts with it; flying forward it carves a banked turn": "Penche le téléphone sur le côté : le drone roule sur le côté comme le téléphone et glisse de ce côté, la caméra penche avec lui ; en avançant il prend un virage incliné",
     'Tilt the phone left/right like a steering wheel (DJI Motion): flat yaw, level camera': 'Penche le téléphone à gauche / droite comme un volant (DJI Motion) : lacet à plat, caméra à l\'horizontale',

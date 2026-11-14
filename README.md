@@ -1,4 +1,4 @@
-# FPV Drone 2.10.0 – extension Blender 4.2 → 5.x (testée 5.3)
+# FPV Drone 2.10.1 – extension Blender 4.2 → 5.x (testée 5.3)
 
 Pilote une caméra comme un drone FPV (radiocommande, manette ou clavier) et enregistre le vol en keyframes.
 Réécriture complète de *Quadcopter FPV Simulator* (WizardOfRobots, 2021), sous licence GPL-3.0-or-later.
@@ -6,10 +6,13 @@ Réécriture complète de *Quadcopter FPV Simulator* (WizardOfRobots, 2021), sou
 Testée sur Blender **5.0.1, 5.1.2 et 5.3.0**. QR code : bibliothèque *QR Code generator* de Project Nayuki (MIT), incluse.
 
 ## Installation
-Glisse `fpv_drone-2.10.0.zip` dans la fenêtre de Blender, ou *Edit › Preferences › Get Extensions › ⌄ › Install from Disk*.
+Glisse `fpv_drone-2.10.1.zip` dans la fenêtre de Blender, ou *Edit › Preferences › Get Extensions › ⌄ › Install from Disk*.
 Le panneau apparaît dans la Vue 3D › barre latérale (N) › onglet **FPV Drone**.
 
 Aucune installation pip ni pygame n'est nécessaire sous Windows.
+
+## Nouveautés 2.10.1
+- **Seul R2 fait avancer** (réglage par défaut avec les gâchettes, donc avec la config manette PS4/PS5 et Xbox) : le drone n'avance plus tout seul. Le stick de tangage ne fait plus avancer ni reculer (un stick qui dérive légèrement suffisait à faire partir le drone), et relâcher R2 freine jusqu'à l'arrêt au lieu de glisser sur sa lancée. R2 avance, L2 recule, le stick gauche monte / descend et tourne, le stick droit glisse sur les côtés. Désactivable : *Seul R2 fait avancer* (panneau Manette).
 
 ## Nouveautés 2.10.0
 - **Caméra fluide** (panneau Caméra, et dans l'encadré du mode Fluide) : la rotation de la caméra devient très fluide dans tous les modes. En Acro / Angle, la vue suit l'orientation du drone à travers un double filtre (ordre 2) : virages, flips et inclinaisons démarrent et s'arrêtent en douceur, sans à-coups ni dépassement. Le drone, lui, vole exactement pareil.

@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "fpv_drone"
-version = "2.10.0"
+version = "2.10.1"
 name = "FPV Drone"
 tagline = "Fly an FPV drone camera with a radio, gamepad, phone or keyboard"
 maintainer = "Lucas"

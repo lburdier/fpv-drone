@@ -30,7 +30,7 @@ CTRL_VALUES = [
     "s.backend", "s.axis_throttle", "s.axis_yaw", "s.axis_pitch", "s.axis_roll", "s.inv_throttle", "s.inv_yaw",
     "s.inv_pitch", "s.inv_roll", "s.throttle_range", "s.deadband", "s.rc_smoothing", "s.keyboard_layout",
     "s.throttle_mode", "s.climb_rate", "s.use_triggers", "s.axis_forward", "s.axis_backward",
-    "s.trigger_speed", "s.trigger_step",
+    "s.trigger_speed", "s.trigger_step", "s.trigger_only",
 ]
 
 # bundled controller presets: (file name, values). Axis numbers are the joystick axes Windows reports.
