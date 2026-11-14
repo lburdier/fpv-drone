@@ -182,6 +182,7 @@ class Drone:
         self.wash = 0.0                      # prop-wash intensity 0..1 (for the OSD / camera shake)
         self.climb_i = 0.0                   # altitude hold: integral of the climb-rate error
         self.alt_hold = None                 # altitude hold: locked height (m) while the stick is centred
+        self.tilt_cap = None                 # altitude hold (Angle): tilt limit that keeps thrust for the climb
         rng = random.Random(seed)
         self._gust = [_OU(1.8, rng) for _ in range(3)]
         self._turb = [_OU(0.12, rng) for _ in range(3)]
@@ -197,6 +198,13 @@ class Drone:
                            radians(stick_rate(p, 0, roll)),
                            -radians(stick_rate(p, 1, yaw))))
         self.heading -= radians(stick_rate(p, 1, yaw)) * dt
+        if self.tilt_cap is not None:
+            # altitude hold: the height wins over the speed. Leaning less keeps enough thrust to climb while
+            # flying forward (full R2 + climb used to saturate the motors and sink)
+            tilt = sqrt(pitch * pitch + roll * roll) * p.max_angle
+            if tilt > self.tilt_cap:
+                f = self.tilt_cap / tilt
+                pitch, roll = pitch * f, roll * f
         q_des = (Quaternion((0.0, 0.0, 1.0), self.heading)
                  @ Quaternion((1.0, 0.0, 0.0), -pitch * p.max_angle)
                  @ Quaternion((0.0, 1.0, 0.0), roll * p.max_angle))
@@ -222,6 +230,13 @@ class Drone:
         upz = max(0.3, up.z)
         inflow = max(0.3, 1.0 - max(0.0, v.dot(up)) / p.prop_speed) if p.realism else 1.0
         g = G if p.gravity else 0.0
+        # largest lean that still leaves the thrust for the asked vertical acceleration (+5 % margin)
+        need = (g + max(0.0, a_z)) / max(1e-6, p.twr * G * inflow) * 1.05
+        cap = max(radians(12.0), acos(max(-1.0, min(1.0, need))))
+        if self.tilt_cap is None:
+            self.tilt_cap = max(cap, p.max_angle)
+        else:
+            self.tilt_cap += (cap - self.tilt_cap) * (1.0 - exp(-dt / 0.25))
         return max(0.0, min(1.0, (g + a_z) / (p.twr * G * upz * inflow)))
 
     def rates_to(self, q_des, gain=9.0, limit=14.0):
@@ -246,8 +261,13 @@ class Drone:
         v = self.vel * mpu                                       # m/s, ground frame
         if q_des is None and p.climb:
             t = self.climb_throttle(t, up, v, p, dt)
+            if p.mode != 'ANGLE':
+                self.tilt_cap = None
         elif q_des is None:
+            self.tilt_cap = None
             t = t * (1.0 - p.throttle_expo) + p.throttle_expo * t ** 3
+        else:
+            self.tilt_cap = None
         self.throttle = t
 
         if p.realism:
@@ -357,6 +377,9 @@ class MotionPilot:
         self.vz_i = 0.0
         self.phone_h0 = None
         self.cam_q = None
+        self.roll = 0.0                       # bank steering: filtered phone roll (rad, right positive)
+        self._r1 = 0.0
+        self.carve = 0.0                      # 0..1, how fast it flies forward (bank steering turns only then)
 
     def update_targets(self, motion, s, dt):
         """motion = (phone heading rel, phone pitch, phone roll, accelerator[, yaw slider])."""
@@ -376,6 +399,13 @@ class MotionPilot:
             self.h_cmd = ph - self.phone_h0
         elif s.motion_steer == 'SLIDER':              # only the on-screen slider turns the drone
             pass
+        elif s.motion_steer == 'BANK':                # the drone rolls like the phone (see command / gimbal)
+            dz = radians(3.0)
+            r = 0.0 if abs(pr) < dz else (pr - dz if pr > 0 else pr + dz)
+            lim = s.motion_max_tilt
+            self._r1 += (max(-lim, min(lim, r)) - self._r1) * k
+            # flying forward, a banked drone also carves the turn (coordinated turn, like a real FPV)
+            self.h_cmd -= (self.roll / max(1e-3, lim)) * s.motion_turn_rate * s.motion_bank_turn * self.carve * dt
         else:                                         # tilt the phone like a steering wheel -> yaw rate
             dz = radians(4.0)
             r = 0.0 if abs(pr) < dz else (pr - dz if pr > 0 else pr + dz)
@@ -388,6 +418,11 @@ class MotionPilot:
         self._l1 += (target_l - self._l1) * k
         self.heading += (self._h1 - self.heading) * k
         self.look += (self._l1 - self.look) * k
+        if s.motion_steer == 'BANK':
+            self.roll += (self._r1 - self.roll) * k
+        else:
+            self._r1 += (0.0 - self._r1) * k
+            self.roll += (self._r1 - self.roll) * k
         return acc
 
     def recenter(self):
@@ -403,6 +438,9 @@ class MotionPilot:
         a = acc_cmd * acc_cmd * 0.35 + acc_cmd * 0.65
         v_des = d * (a * s.motion_max_speed / 3.6)
         v = drone.vel * mpu
+        fwd_h = Vector((-sin(h), cos(h), 0.0))
+        right_h = Vector((cos(h), sin(h), 0.0))
+        self.carve = max(0.0, min(1.0, v.dot(fwd_h) / 6.0))
         err = v_des - v
         a_cmd = Vector((err.x * 1.4, err.y * 1.4, err.z * 2.5))
         amax = s.motion_max_accel
@@ -415,6 +453,17 @@ class MotionPilot:
         sp = v.length
         a_cmd += v * (p.drag_l + sp * (p.drag_xy * 0.6 + p.drag_z * 0.4))
         f = a_cmd + Vector((0.0, 0.0, G if p.gravity else 0.0))
+        if s.motion_steer == 'BANK' and abs(self.roll) > 1e-4:
+            # bank steering: the drone LEANS by the phone's roll (thrust tilted sideways), so it rolls exactly like
+            # the phone and slides that way (drag sets the sideways speed). Phone level again: the speed controller
+            # takes the side axis back and brakes the slide. Never faster sideways than Max Speed.
+            w = min(1.0, abs(self.roll) / radians(5.0))
+            v_lat = v.dot(right_h)
+            if v_lat * self.roll > 0.0:
+                w *= max(0.0, min(1.0, (s.motion_max_speed / 3.6 - abs(v_lat)) / 2.0))
+            lat_bank = max(0.2 * G, f.z) * tan(min(abs(self.roll), radians(80.0))) * (1.0 if self.roll > 0.0 else -1.0)
+            lat = f.dot(right_h)
+            f += right_h * ((lat_bank - lat) * w)
         # tilt limit (keeps vertical authority)
         max_tilt = s.motion_max_tilt
         horiz = Vector((f.x, f.y, 0.0))
@@ -426,7 +475,6 @@ class MotionPilot:
         up = f.normalized()
         inflow = max(0.3, 1.0 - max(0.0, v.dot(up)) / p.prop_speed) if p.realism else 1.0
         motor = max(0.04, min(1.0, f.length / (p.twr * G * inflow)))
-        fwd_h = Vector((-sin(h), cos(h), 0.0))
         y = fwd_h - up * fwd_h.dot(up)
         if y.length < 1e-6:
             y = Vector((0.0, 1.0, 0.0))
@@ -438,6 +486,15 @@ class MotionPilot:
     def gimbal(self, drone, cam_base_q, s, dt):
         """Camera local rotation: stabilised look direction, slightly lagging like a real gimbal."""
         world = Quaternion((0.0, 0.0, 1.0), self.heading) @ Quaternion((1.0, 0.0, 0.0), radians(90.0) + self.look)
+        if s is not None and abs(self.roll) > 1e-5:                    # bank steering: horizon tilts like the phone
+            world = world @ Quaternion((0.0, 0.0, 1.0), -self.roll * s.motion_bank_cam)
+        tau = smooth_cam(s) if s is not None else None
+        if tau is not None:
+            if getattr(self, "sgimbal", None) is None:
+                self.sgimbal = SmoothGimbal()
+            self.cam_q = self.sgimbal.follow(drone, world, tau, dt)
+            return self.cam_q
+        self.sgimbal = None
         local = drone.q.conjugated() @ world
         if self.cam_q is None:
             self.cam_q = local
@@ -446,6 +503,36 @@ class MotionPilot:
                 local.negate()
             self.cam_q = self.cam_q.slerp(local, 1.0 - exp(-dt / 0.06))
         return self.cam_q
+
+
+# ===================================================================================== smooth camera
+class SmoothGimbal:
+    """Smooth Camera in the gimbal modes: the gimbal's WORLD orientation goes through two cascaded slerp
+    low-passes (2nd order: pans start and stop softly, no jerk, no overshoot), then is expressed in the body frame."""
+
+    def __init__(self):
+        self.q1 = None
+        self.q2 = None
+
+    def follow(self, drone, world, tau, dt):
+        if self.q2 is None:
+            self.q1, self.q2 = world.copy(), world.copy()
+        else:
+            k = 1.0 - exp(-dt / max(0.005, tau * 0.5))
+            w = world.copy()
+            if w.dot(self.q1) < 0.0:
+                w.negate()
+            self.q1 = self.q1.slerp(w, k)
+            a = self.q1.copy()
+            if a.dot(self.q2) < 0.0:
+                a.negate()
+            self.q2 = self.q2.slerp(a, k).normalized()
+        return drone.q.conjugated() @ self.q2
+
+
+def smooth_cam(s):
+    """Rotation smoothness (s) of the Smooth Camera, or None when it is off."""
+    return max(0.02, s.cam_smooth_time) if getattr(s, "cam_smooth", False) else None
 
 
 # ===================================================================================== smooth (cinematic) mode
@@ -464,7 +551,8 @@ class CinePilot:
         self.look = 0.0
         self.cam_q = None
 
-    def step(self, d, thr, yaw, pitch, roll, p, s, dt):
+    def step(self, d, thr, yaw, pitch, roll, p, s, dt, fwd_ms=0.0):
+        """fwd_ms: forward speed asked by R2 / L2 (m/s, pilot physics), added to the pitch stick's speed."""
         mpu = p.mpu
         tau = max(0.05, s.cine_smooth)
         k = 1.0 - exp(-dt / tau)
@@ -486,7 +574,7 @@ class CinePilot:
         else:
             self.alt = None
             vz = climb * p.climb_rate
-        v_des = fwd * (pitch * vmax) + right * (roll * vmax) + Vector((0.0, 0.0, vz))
+        v_des = fwd * (pitch * vmax + fwd_ms) + right * (roll * vmax) + Vector((0.0, 0.0, vz))
         # two cascaded low-passes = S-curve: smooth start, smooth stop, no overshoot
         self.v1 += (v_des - self.v1) * k
         v_new = v + (self.v1 - v) * k
@@ -516,6 +604,13 @@ class CinePilot:
     def gimbal(self, drone, cam_base_q, s, dt):
         """Level camera: heading + the chosen look angle, no roll; slightly damped like a real gimbal."""
         world = Quaternion((0.0, 0.0, 1.0), self.heading) @ Quaternion((1.0, 0.0, 0.0), radians(90.0) + s.cine_look)
+        tau = smooth_cam(s)
+        if tau is not None:
+            if getattr(self, "sgimbal", None) is None:
+                self.sgimbal = SmoothGimbal()
+            self.cam_q = self.sgimbal.follow(drone, world, tau, dt)
+            return self.cam_q
+        self.sgimbal = None
         local = drone.q.conjugated() @ world
         if self.cam_q is None:
             self.cam_q = local

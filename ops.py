@@ -113,6 +113,7 @@ class FPV_OT_fly(_Op, bpy.types.Operator):
         self.fps_t, self.fps_n = self.t_last, 0
         context.workspace.status_text_set(
             T("FPV  |  ESC / Right-click: stop   R: reset to start   Wheel or + -: speed") +
+            T("   Home / End: R2 power") +
             (T("   |   W/S throttle  A/D yaw  arrows pitch/roll  Shift full  Ctrl fine") if self.is_kbd else "") +
             (T("   |   F / click: fire") if self.sess.proj is not None else ""))
         if self.handlers.paused:
@@ -142,6 +143,9 @@ class FPV_OT_fly(_Op, bpy.types.Operator):
         d = _SPEED_KEYS.get(event.type)
         if d is not None and event.value == 'PRESS':
             self.sess.change_boost(d)
+            return {'RUNNING_MODAL'}
+        if event.type in {'HOME', 'END'} and event.value == 'PRESS':
+            self.sess.change_power(1 if event.type == 'HOME' else -1)
             return {'RUNNING_MODAL'}
         if self.is_kbd and self.sess.backend.event(event):
             return {'RUNNING_MODAL'}

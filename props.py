@@ -111,12 +111,27 @@ class FPV_Settings(bpy.types.PropertyGroup):
                               description="Altitude Hold: vertical speed with the stick fully up / down")
     use_triggers: BoolProperty(name="Triggers: Forward / Back", default=False,
                                description="R2 (RT) flies forward, L2 (LT) backward: the more you press, the faster. "
-                                           "Angle mode; combine with Altitude Hold to cruise level")
+                                           "Angle and Smooth modes; the throttle stick still climbs / descends")
     axis_forward: IntProperty(name="Forward Axis", default=5, min=0, max=7, description="R2 / RT on a PS or Xbox pad")
     trigger_speed: FloatProperty(name="Trigger Max Speed (km/h)", default=80.0, min=1.0, soft_max=200.0, max=2000.0,
-                                 description="Angle mode: speed with R2 fully pressed. The pressure sets the speed "
-                                             "(half pressed = half the speed), held like a cruise control")
+                                 description="Speed with R2 fully pressed (Angle and Smooth modes). The pressure sets "
+                                             "the speed (half pressed = half the speed), held like a cruise control. "
+                                             "Change it in flight with D-pad up / down (or Home / End)")
     axis_backward: IntProperty(name="Backward Axis", default=4, min=0, max=7, description="L2 / LT on a PS or Xbox pad")
+    trigger_step: FloatProperty(name="Power Step (km/h)", default=10.0, min=1.0, max=100.0,
+                                description="R2 power change for each press of D-pad up / down (or Home / End) in flight")
+    # ---------------------------------------------------------------- smooth camera
+    cam_smooth: BoolProperty(name="Smooth Camera", default=False,
+                             description="Very fluid camera rotation: the view follows the drone's turns, flips and "
+                                         "tilts with a soft, jerk-free delay (all flight modes). The drone itself flies "
+                                         "exactly the same")
+    cam_smooth_time: FloatProperty(name="Rotation Smoothness", default=0.35, min=0.02, max=3.0, subtype='TIME_ABSOLUTE',
+                                   unit='TIME_ABSOLUTE',
+                                   description="Smooth Camera: how long the view takes to follow a rotation. "
+                                               "Higher = more fluid and cinematic, lower = more direct")
+    cam_smooth_roll: FloatProperty(name="Level Roll", default=0.0, min=0.0, max=1.0, subtype='FACTOR',
+                                   description="Smooth Camera: removes part of the drone's roll from the view "
+                                               "(1 = horizon always level, like a gimbal)")
     # ---------------------------------------------------------------- flight
     flight_mode: EnumProperty(name="Mode", default='ACRO', items=[
         ('ACRO', "Acro", "Rate mode, like a real FPV quad: sticks command rotation speed"),
@@ -143,14 +158,22 @@ class FPV_Settings(bpy.types.PropertyGroup):
     motion_max_accel: FloatProperty(name="Max Accel (m/s²)", default=5.0, min=0.5, max=100.0, soft_max=30.0,
                                     description="How hard the drone speeds up / brakes. Lower = smoother")
     motion_max_tilt: FloatProperty(name="Max Tilt", default=radians(35), min=radians(5), max=radians(75), subtype='ANGLE')
-    motion_steer: EnumProperty(name="Steering", default='ROLL', items=[
-        ('ROLL', "Tilt to Turn", "Tilt the phone left/right like a steering wheel (DJI Motion)"),
+    motion_steer: EnumProperty(name="Steering", default='BANK', items=[
+        ('BANK', "Bank (Roll)", "Tilt the phone sideways: the drone rolls on its side like the phone and slides that "
+                                "way, the camera tilts with it; flying forward it carves a banked turn"),
+        ('ROLL', "Tilt to Turn", "Tilt the phone left/right like a steering wheel (DJI Motion): flat yaw, level camera"),
         ('POINT', "Point to Turn", "The drone faces where the phone faces (turn your body)"),
         ('SLIDER', "Slider Only", "Phone tilt only aims the camera up/down; turn with the rotation slider")])
     motion_yaw_rate: FloatProperty(name="Rotation Speed", default=radians(120), min=radians(10), max=radians(400), subtype='ANGLE',
                                    description="Yaw speed with the rotation slider at full travel")
     motion_turn_rate: FloatProperty(name="Turn Rate", default=radians(90), min=radians(10), max=radians(360), subtype='ANGLE',
                                     description="Yaw speed at full phone tilt")
+    motion_bank_turn: FloatProperty(name="Carve", default=0.6, min=0.0, max=1.0, subtype='FACTOR',
+                                    description="Bank steering: how much the drone also turns when it rolls while "
+                                                "flying forward (0 = it only rolls and slides sideways)")
+    motion_bank_cam: FloatProperty(name="Camera Roll", default=1.0, min=0.0, max=1.0, subtype='FACTOR',
+                                   description="Bank steering: how much of the drone's roll the camera shows "
+                                               "(1 = the horizon tilts exactly like the phone)")
     motion_look_gain: FloatProperty(name="Look Gain", default=1.0, min=0.2, max=3.0)
     motion_max_look: FloatProperty(name="Max Look", default=radians(70), min=radians(10), max=radians(89), subtype='ANGLE')
     motion_fly_look: BoolProperty(name="Fly Where You Look", default=True,

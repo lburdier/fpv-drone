@@ -161,14 +161,25 @@ class FPV_PT_controller(_Sub, bpy.types.Panel):
             row = box.row(align=True)
             row.prop(s, "axis_forward", text=T("R2 axis"), translate=False)
             row.prop(s, "axis_backward", text=T("L2 axis"), translate=False)
-            if s.flight_mode == 'ANGLE':
-                box.prop(s, "trigger_speed")
-            elif s.flight_mode == 'CINE':
-                _label(box, "Smooth mode: R2 fully pressed = the smooth mode's Max Speed", 'INFO')
-            if s.flight_mode not in ('ANGLE', 'CINE'):
+            if s.flight_mode in ('ANGLE', 'CINE'):
+                col = box.column(align=True)
+                col.prop(s, "trigger_speed")
+                col.prop(s, "trigger_step")
+                _label(box, "In flight: D-pad up / down (or Home / End) = R2 power + / -", 'INFO')
+                _label(box, "Throttle stick: climb / descend while R2 flies forward", 'INFO')
+            else:
                 _label(box, "Triggers work in Angle and Smooth modes", 'ERROR')
         L.prop(s, "deadband")
         L.prop(s, "rc_smoothing")
+
+
+def draw_smooth_camera(box, s):
+    box.prop(s, "cam_smooth", icon='MOD_SMOOTH')
+    if s.cam_smooth:
+        col = box.column(align=True)
+        col.prop(s, "cam_smooth_time")
+        if s.flight_mode in ('ACRO', 'ANGLE'):
+            col.prop(s, "cam_smooth_roll")
 
 
 def draw_throttle_mode(L, s):
@@ -208,6 +219,7 @@ class FPV_PT_flight(_Sub, bpy.types.Panel):
             col.prop(s, "cine_speed"); col.prop(s, "cine_smooth"); col.prop(s, "cine_yaw_rate")
             col = box.column(align=True)
             col.prop(s, "climb_rate"); col.prop(s, "cine_lean"); col.prop(s, "cine_look")
+            draw_smooth_camera(box, s)
         L.row().prop(s, "rates_type", expand=True)
         if s.rates_type == 'ACTUAL':
             col = L.column(heading=T("Roll / Pitch"), translate=False)
@@ -251,8 +263,11 @@ class FPV_PT_motion(_Sub, bpy.types.Panel):
         if s.flight_mode != 'MOTION':
             _label(L, "Select Mode: Motion (or 'Tilt' on the phone)", 'INFO')
         L.prop(s, "motion_steer")
-        if s.motion_steer == 'ROLL':
+        if s.motion_steer in ('ROLL', 'BANK'):
             L.prop(s, "motion_turn_rate")
+        if s.motion_steer == 'BANK':
+            L.prop(s, "motion_bank_turn")
+            L.prop(s, "motion_bank_cam")
         L.prop(s, "motion_yaw_rate")
         col = L.column(align=True)
         col.prop(s, "motion_max_speed"); col.prop(s, "motion_max_accel"); col.prop(s, "motion_max_tilt")
@@ -412,6 +427,7 @@ class FPV_PT_camera(_Sub, bpy.types.Panel):
         L.use_property_split = True
         L.use_property_decorate = False
         L.prop(s, "cam_tilt"); L.prop(s, "cam_fov"); L.prop(s, "vibration"); L.prop(s, "horizon_lock"); L.prop(s, "view_through")
+        draw_smooth_camera(L.box(), s)
         L.separator()
         L.prop(s, "rig_model")
         L.operator("fpv.add_model", text=T("Add Drone Model"), icon='MESH_ICOSPHERE', translate=False)

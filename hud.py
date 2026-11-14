@@ -99,6 +99,9 @@ def draw_osd(d, W, H, scale=1.0):
     boost = d.get("boost", 1.0)
     if abs(boost - 1.0) > 1e-3:
         _text(W - 170 * s, yb, T("SPEED x%g") % round(boost, 2), fs, (0.45, 0.85, 1.0, 0.95))
+    if d.get("power_age", 99.0) < 1.2:                  # big confirmation when the R2 power changes
+        _text(cx, cy + 150 * s, T("R2 POWER %d km/h") % round(d.get("power", 0.0)), int(30 * s),
+              (1.0, 0.8, 0.4, 0.95), center=True)
     if d.get("boost_age", 99.0) < 1.2:                  # big confirmation when the multiplier changes
         _text(cx, cy + 120 * s, T("SPEED x%g") % round(boost, 2), int(30 * s), (0.45, 0.85, 1.0, 0.95), center=True)
 

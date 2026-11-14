@@ -29,9 +29,10 @@ DPAD_UP, DPAD_DOWN = 0x4000, 0x8000
 
 # what each button does while flying
 ACTIONS = {CROSS: "fire", TRIANGLE: "reset", R1: "speed+", L1: "speed-", OPTIONS: "stop", SQUARE: "recenter",
-           TOUCH: "osd", DPAD_UP: "speed+", DPAD_DOWN: "speed-"}
+           TOUCH: "osd", DPAD_UP: "power+", DPAD_DOWN: "power-"}
 BUTTON_HELP = (("Options", "stop the flight"), ("Triangle", "back to start"), ("Cross", "fire (projectiles)"),
-               ("R1 / L1", "speed + / -"), ("Square", "recenter (Motion)"), ("Touchpad", "show / hide the OSD"))
+               ("R1 / L1", "speed + / -"), ("D-pad up / down", "R2 power + / -"), ("Square", "recenter (Motion)"),
+               ("Touchpad", "show / hide the OSD"))
 
 IS_WINDOWS = sys.platform.startswith("win")
 

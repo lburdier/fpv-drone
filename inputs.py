@@ -156,6 +156,17 @@ class XInputBackend:
         self.id = int(device_id)
         self.state = _XINPUT_STATE()
         self.label = "Xbox controller #%d" % (self.id + 1)
+        self.prev_buttons = 0
+        self.pressed = 0
+
+    # same flight actions as the PS controller (A fire, Y back to start, RB / LB speed, D-pad R2 power...)
+    XBOX_ACTIONS = {0x1000: "fire", 0x8000: "reset", 0x0200: "speed+", 0x0100: "speed-", 0x0010: "stop",
+                    0x4000: "recenter", 0x0020: "osd", 0x0001: "power+", 0x0002: "power-"}
+
+    def actions(self):
+        """Flight actions from the buttons pressed since the last call."""
+        p, self.pressed = self.pressed, 0
+        return [a for bit, a in self.XBOX_ACTIONS.items() if p & bit]
 
     def read(self):
         if self.lib.XInputGetState(self.id, ctypes.byref(self.state)) != 0:
@@ -164,7 +175,10 @@ class XInputBackend:
         th = lambda v: max(-1.0, v / 32767.0)
         tr = lambda v: v / 255.0 * 2.0 - 1.0
         axes = [th(g.sThumbLX), th(g.sThumbLY), th(g.sThumbRX), th(g.sThumbRY), tr(g.bLeftTrigger), tr(g.bRightTrigger), 0.0, 0.0]
-        return axes, int(g.wButtons)
+        b = int(g.wButtons)
+        self.pressed |= b & ~self.prev_buttons
+        self.prev_buttons = b
+        return axes, b
 
     def close(self):
         pass

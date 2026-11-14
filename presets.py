@@ -24,11 +24,13 @@ DRONE_VALUES = [
     "s.max_angle", "s.cam_tilt", "s.cam_fov", "s.vibration", "s.horizon_lock", "s.speed_boost",
     "s.motion_max_speed", "s.motion_max_accel", "s.motion_max_tilt", "s.motion_turn_rate", "s.motion_yaw_rate",
     "s.motion_smooth", "s.cine_speed", "s.cine_smooth", "s.cine_yaw_rate", "s.cine_lean", "s.cine_look", "s.climb_rate",
+    "s.cam_smooth", "s.cam_smooth_time", "s.cam_smooth_roll", "s.motion_steer", "s.motion_bank_turn", "s.motion_bank_cam",
 ]
 CTRL_VALUES = [
     "s.backend", "s.axis_throttle", "s.axis_yaw", "s.axis_pitch", "s.axis_roll", "s.inv_throttle", "s.inv_yaw",
     "s.inv_pitch", "s.inv_roll", "s.throttle_range", "s.deadband", "s.rc_smoothing", "s.keyboard_layout",
     "s.throttle_mode", "s.climb_rate", "s.use_triggers", "s.axis_forward", "s.axis_backward",
+    "s.trigger_speed", "s.trigger_step",
 ]
 
 # bundled controller presets: (file name, values). Axis numbers are the joystick axes Windows reports.

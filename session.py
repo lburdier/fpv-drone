@@ -223,11 +223,15 @@ class FlightSession:
         self.trig_f = 0.0                   # same, smoothed like the sticks
         self.trig_i = 0.0                   # speed controller integral (pitch units)
         self.trig_target = None             # km/h shown on the OSD while a trigger is pressed
+        self.power_clock = -100.0           # last in-flight change of the R2 power (OSD confirmation)
         self.raw = [0.0] * 8
         self.crashed_t = 0.0
         self.motion = (0.0, 0.0, 0.0, 0.0, 0.0)
         self.on_ground = False
         self.gimbal_q = None
+        self.view_q = None                  # Smooth Camera: low-passed body orientation seen by the camera
+        self.view_q1 = None                 # (first stage of the 2nd-order filter)
+        self.view_prev = None               # view_q before the last sub-step (render interpolation)
         self.frames_recorded = 0
         self.max_speed = 0.0
         self.rec_buf = []                   # recorded samples: written in one pass at the end (no per-frame keyframe_insert)
@@ -352,11 +356,9 @@ class FlightSession:
         if s.use_triggers and s.flight_mode in ('ANGLE', 'CINE'):   # R2 forward / L2 backward, by how far pressed
             fwd = (ax(s.axis_forward, False) + 1.0) * 0.5
             back = (ax(s.axis_backward, False) + 1.0) * 0.5
-            trig = flight.apply_deadband(fwd, 0.04) - flight.apply_deadband(back, 0.04)
-            if s.flight_mode == 'CINE':                 # smooth mode: the pitch stick already IS a speed
-                pitch = max(-1.0, min(1.0, pitch + trig))
-            else:
-                self.trig = trig                        # Angle: speed command, handled in the physics step
+            # Angle: cruise-control speed handled in the physics step. Smooth: forward speed added to the
+            # pitch stick's. In both the throttle stick still climbs / descends at the same time.
+            self.trig = flight.apply_deadband(fwd, 0.04) - flight.apply_deadband(back, 0.04)
         self.sticks = (max(0.0, min(1.0, thr)), yaw, pitch, roll)
         return self.sticks
 
@@ -434,6 +436,7 @@ class FlightSession:
             prev_q = self.drone.q.copy()
             prev_g = self.gimbal_q.copy() if self.gimbal_q is not None else None
             self.r_prev = (prev, prev_q, prev_g)
+            self.view_prev = self.view_q.copy() if self.view_q is not None else None
             # RC smoothing (2nd order, like Betaflight): the stick packets arrive in steps, the drone must not
             a1, a2 = self.rc
             for i in range(4):
@@ -451,12 +454,13 @@ class FlightSession:
                 self.drone.step(motor, 0.0, 0.0, 0.0, p, SUBSTEP, q_des=q_des)
                 self.gimbal_q = self.pilot.gimbal(self.drone, None, self.s, SUBSTEP)
             elif cine:
-                self.pilot.step(self.drone, thr, yaw, pitch, roll, p, self.s, SUBSTEP)
+                self.pilot.step(self.drone, thr, yaw, pitch, roll, p, self.s, SUBSTEP, fwd_ms=self._trigger_speed_ms())
                 self.gimbal_q = self.pilot.gimbal(self.drone, None, self.s, SUBSTEP)
             else:
                 self.drone.step(thr, yaw, pitch, roll, p, SUBSTEP)
             self.sim_t += SUBSTEP
             self._collide(prev, p, r)
+            self._smooth_view(SUBSTEP)
             self.sub_i += 1
             if self.proj is not None and self.sub_i % 4 == 0:
                 self.proj.step(SUBSTEP * 4, self.world, self.floor)
@@ -467,7 +471,8 @@ class FlightSession:
                     pos_i = prev.lerp(self.drone.pos, a)
                     q_i = prev_q.slerp(self.drone.q, a)
                     g_i = prev_g.slerp(self.gimbal_q, a) if (prev_g is not None and self.gimbal_q is not None) else self.gimbal_q
-                    self._write(record_frame=self.frame, pos=pos_i, q_body=q_i, gimbal=g_i, t=self.next_frame_t)
+                    self._write(record_frame=self.frame, pos=pos_i, q_body=q_i, gimbal=g_i, t=self.next_frame_t,
+                                view=self._view_lerp(a))
                     if self.proj is not None:
                         self.proj.record(self.frame)
                     self.frame += 1
@@ -484,7 +489,7 @@ class FlightSession:
             g = self.gimbal_q
             gi = pg.slerp(g, a) if (pg is not None and g is not None) else g
             self._write(pos=pp.lerp(self.drone.pos, a), q_body=pq.slerp(self.drone.q, a), gimbal=gi,
-                        t=target - SUBSTEP)
+                        t=target - SUBSTEP, view=self._view_lerp(a))
         else:
             self._write()
         self.push_telemetry()
@@ -503,6 +508,29 @@ class FlightSession:
         else:
             self.in_buf.append((real_dt, tuple(self.sticks) + (self.trig,)))
 
+    def _trigger_curve(self):
+        """R2 - L2 after the pressure curve (a bit finer at light pressure), -1..1."""
+        tr = self.trig_f
+        return tr * abs(tr) * 0.3 + tr * 0.7
+
+    def _trigger_speed_ms(self):
+        """Smooth mode: forward speed asked by the triggers (m/s), shown on the OSD like in Angle mode."""
+        if abs(self.trig_f) < 0.01:
+            self.trig_target = None
+            return 0.0
+        c = self._trigger_curve()
+        self.trig_target = abs(c) * self.s.trigger_speed * max(0.01, getattr(self.s, "speed_boost", 1.0))
+        return c * self.s.trigger_speed / 3.6
+
+    def change_power(self, direction):
+        """D-pad up / down, Home / End while flying: R2 full-press speed + / - one Power Step."""
+        s = self.s
+        step = max(1.0, getattr(s, "trigger_step", 10.0))
+        s.trigger_speed = max(step if direction < 0 else 1.0,
+                              min(2000.0, round((s.trigger_speed + direction * step) / step) * step))
+        self.power_clock = time.perf_counter()
+        return s.trigger_speed
+
     def _trigger_pitch(self, pitch, p):
         """R2 / L2 in Angle mode: the pressure sets a forward (or backward) SPEED, held like a cruise control.
         Half pressed = half of Trigger Max Speed. The pitch stick still adds on top."""
@@ -513,7 +541,7 @@ class FlightSession:
             self.trig_vprev = None
             self.trig_a = 0.0
             return pitch
-        c = tr * abs(tr) * 0.3 + tr * 0.7                       # a bit finer at light pressure
+        c = self._trigger_curve()                               # a bit finer at light pressure
         v_des = c * self.s.trigger_speed / 3.6                  # m/s (pilot physics: the Speed Multiplier applies)
         d = self.drone
         h = d.heading
@@ -642,6 +670,42 @@ class FlightSession:
             self.crashed_t = self.sim_t
             return
 
+    # ----------------------------------------------------------------------------------- smooth camera
+    def _smooth_view(self, dt):
+        """Smooth Camera: the camera looks through the body orientation passed through two cascaded slerp
+        low-passes (2nd order = no jerk: rotations start and stop softly, no overshoot). Runs on every physics
+        sub-step, so it is frame-rate independent and identical in the recorded take.
+        In the gimbal modes (Smooth / Motion) the gimbal itself is slowed down instead (see flight.py)."""
+        s = self.s
+        if not getattr(s, "cam_smooth", False) or s.flight_mode in ('MOTION', 'CINE') or self.state == 'CRASHED':
+            self.view_q = self.view_q1 = None
+            return
+        q = self.drone.q.copy()
+        if self.view_q is None:
+            self.view_q, self.view_q1 = q.copy(), q.copy()
+            return
+        k = 1.0 - exp(-dt / max(0.005, s.cam_smooth_time * 0.5))      # two stages of tau/2 ~ total delay tau
+        if q.dot(self.view_q1) < 0.0:
+            q.negate()
+        self.view_q1 = self.view_q1.slerp(q, k)
+        q1 = self.view_q1.copy()
+        if q1.dot(self.view_q) < 0.0:
+            q1.negate()
+        self.view_q = self.view_q.slerp(q1, k).normalized()
+
+    def _view_lerp(self, a):
+        if self.view_q is None:
+            return None
+        if self.view_prev is None:
+            return self.view_q
+        return self.view_prev.slerp(self.view_q, a)
+
+    @staticmethod
+    def _level_roll(wq, amount):
+        """Roll a camera (world orientation wq, looking down -Z) around its view axis to level the horizon."""
+        right = wq @ Vector((1.0, 0.0, 0.0)); upc = wq @ Vector((0.0, 1.0, 0.0))
+        return Quaternion((0.0, 0.0, 1.0), atan2(-right.z, upc.z) * amount)
+
     # ----------------------------------------------------------------------------------- output
     def _jitter(self, t=None):
         a = self.s.vibration * (0.25 + 0.75 * self.drone.motor) + self.drone.wash * 0.02 + self.shake * 0.045
@@ -650,12 +714,21 @@ class FlightSession:
                       a * 0.5 * (0.6 * sin(51.0 * t + 2.1) + 0.4 * sin(113.0 * t + 0.7)),
                       a * 0.6 * (0.6 * sin(37.0 * t + 0.4) + 0.4 * sin(89.0 * t + 1.9))), 'XYZ')
 
-    def _write(self, record_frame=None, pos=None, q_body=None, gimbal=None, t=None):
+    def _write(self, record_frame=None, pos=None, q_body=None, gimbal=None, t=None, view=None):
         obj = self.obj
         pos = self.drone.pos if pos is None else pos
         q_body = self.drone.q if q_body is None else q_body
         jit = self._jitter(t).to_quaternion()
         q = q_body @ self.C
+        # Smooth Camera (Acro / Angle): the camera looks through the low-passed orientation `qv`
+        qv = (view if view is not None else self.view_q) if self.view_q is not None else None
+        lock = self.s.horizon_lock
+        if qv is not None:
+            lock = max(lock, getattr(self.s, "cam_smooth_roll", 0.0))
+            if self.cam is None:                            # bare camera: the object itself is the camera
+                q = qv @ self.C
+                if lock > 0.0:
+                    q = q @ self._level_roll(q, lock)
         if self.cam is None and self.s.vibration > 0.0:
             q = q @ jit
         if q.dot(self.prev_q) < 0.0:              # keep quaternion keys continuous (no 360 flips)
@@ -663,7 +736,8 @@ class FlightSession:
         self.prev_q = q.copy()
         obj.location = pos
         obj.rotation_quaternion = q
-        cam_animated = self.cam is not None and (self.s.vibration > 0.0 or self.s.horizon_lock > 0.0 or self.drone.wash > 0.0)
+        cam_animated = self.cam is not None and (self.s.vibration > 0.0 or lock > 0.0 or self.drone.wash > 0.0
+                                                 or qv is not None)
         gimballed = self.pilot is not None and self.s.flight_mode in ('MOTION', 'CINE')
         if gimballed:
             g = gimbal if gimbal is not None else self.gimbal_q
@@ -684,11 +758,11 @@ class FlightSession:
             self.cam.rotation_quaternion = cq
         elif self.cam is not None:
             cq = self.cam_base.copy()
-            if self.s.horizon_lock > 0.0:                    # roll the camera around its view axis to level the horizon
-                wq = q_body @ cq
-                right = wq @ Vector((1.0, 0.0, 0.0)); upc = wq @ Vector((0.0, 1.0, 0.0))
-                theta = atan2(-right.z, upc.z) * self.s.horizon_lock
-                cq = cq @ Quaternion((0.0, 0.0, 1.0), theta)
+            rig_q = q_body @ self.C
+            if qv is not None:                               # camera world = smoothed body: undo the rig's rotation
+                cq = (rig_q.conjugated() @ (qv @ self.C)).normalized() @ cq
+            if lock > 0.0:                                   # roll the camera around its view axis to level the horizon
+                cq = cq @ self._level_roll(rig_q @ cq, lock)
             cq = cq @ jit
             if cq.dot(self.prev_cq) < 0.0:
                 cq.negate()
@@ -737,6 +811,10 @@ class FlightSession:
             self.change_boost(1)
         elif a == 'speed-':
             self.change_boost(-1)
+        elif a == 'power+':
+            self.change_power(1)
+        elif a == 'power-':
+            self.change_power(-1)
         elif a == 'stop':
             self.want_stop = True
         elif a == 'osd':
@@ -763,6 +841,7 @@ class FlightSession:
         self.r_prev = None
         self.pilot = None
         self.gimbal_q = None
+        self.view_q = self.view_q1 = self.view_prev = None
         self.prev_q = self.spawn_rot.copy()
         self.state, self.t_state = 'WAIT_ARM', 0.0
         self._write()
@@ -838,6 +917,7 @@ class FlightSession:
             "boost": self.s.speed_boost, "boost_age": time.perf_counter() - self.boost_clock,
             "climb": (self.s.throttle_mode == 'CLIMB' and self.s.flight_mode != 'MOTION') or self.s.flight_mode == 'CINE',
             "trig": self.trig_target,
+            "power": self.s.trigger_speed, "power_age": time.perf_counter() - self.power_clock,
             "vz": d.vel.z * p_mpu,
             "cull": self.culler.stats() if self.culler is not None else None,
             "proj": self.proj.fired if self.proj is not None else None,

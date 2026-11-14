@@ -1,4 +1,4 @@
-# FPV Drone 2.9.1 – extension Blender 4.2 → 5.x (testée 5.3)
+# FPV Drone 2.10.0 – extension Blender 4.2 → 5.x (testée 5.3)
 
 Pilote une caméra comme un drone FPV (radiocommande, manette ou clavier) et enregistre le vol en keyframes.
 Réécriture complète de *Quadcopter FPV Simulator* (WizardOfRobots, 2021), sous licence GPL-3.0-or-later.
@@ -6,10 +6,20 @@ Réécriture complète de *Quadcopter FPV Simulator* (WizardOfRobots, 2021), sou
 Testée sur Blender **5.0.1, 5.1.2 et 5.3.0**. QR code : bibliothèque *QR Code generator* de Project Nayuki (MIT), incluse.
 
 ## Installation
-Glisse `fpv_drone-2.9.1.zip` dans la fenêtre de Blender, ou *Edit › Preferences › Get Extensions › ⌄ › Install from Disk*.
+Glisse `fpv_drone-2.10.0.zip` dans la fenêtre de Blender, ou *Edit › Preferences › Get Extensions › ⌄ › Install from Disk*.
 Le panneau apparaît dans la Vue 3D › barre latérale (N) › onglet **FPV Drone**.
 
 Aucune installation pip ni pygame n'est nécessaire sous Windows.
+
+## Nouveautés 2.10.0
+- **Caméra fluide** (panneau Caméra, et dans l'encadré du mode Fluide) : la rotation de la caméra devient très fluide dans tous les modes. En Acro / Angle, la vue suit l'orientation du drone à travers un double filtre (ordre 2) : virages, flips et inclinaisons démarrent et s'arrêtent en douceur, sans à-coups ni dépassement. Le drone, lui, vole exactement pareil.
+  - *Fluidité de rotation* (0,35 s par défaut) : plus haut = plus cinématique, plus bas = plus direct.
+  - *Redresser le roulis* (Acro / Angle) : retire une partie du roulis de l'image (1 = horizon toujours droit).
+  - En modes Fluide et Motion, c'est la nacelle elle-même qui est ralentie. Le lissage est calculé à chaque pas de physique : la prise enregistrée est identique à ce que tu vois.
+- **Puissance R2 réglable en vol** : la *vitesse max gâchette* marche maintenant en mode **Angle et en mode Fluide** (avant, en Fluide, R2 était bloqué sur la vitesse max du mode). En vol, **croix haut / bas** (PS4/PS5 et Xbox) ou **Origine / Fin** au clavier = puissance R2 + / − (pas réglable, 10 km/h par défaut). L'OSD affiche « PUISSANCE R2 … km/h ».
+- **Avancer en montant ou en descendant** : en mode Angle avec la tenue d'altitude, R2 à fond inclinait tellement le drone que les moteurs saturaient et qu'il coulait même stick de montée à fond (−2,4 m/s). La hauteur est désormais prioritaire : l'inclinaison est limitée juste ce qu'il faut pour garder la poussée de montée. Mesuré : R2 à fond + montée = +4,3 m/s à 133 km/h ; R2 + descente = −6,4 m/s.
+- **Téléphone : pilotage en roulis** (mode Motion, nouveau réglage par défaut *Roulis (pencher)*) : pencher le téléphone sur le côté fait **rouler le drone sur son axe** comme le téléphone ; il glisse de ce côté et l'horizon de la caméra penche avec lui. En avançant, il prend un virage incliné (*Virage*, 0,6 par défaut). *Roulis caméra* règle la part du roulis visible à l'image. L'ancien comportement (lacet à plat) reste disponible : *Incliner pour tourner*.
+- **Manette Xbox** : les boutons pilotent aussi (A tir, Y retour au départ, RB / LB vitesse, Start stop, X recentrer, Back OSD, croix puissance R2), comme sur la manette PlayStation. Sur PS4/PS5, la croix haut / bas règle maintenant la puissance R2 (R1 / L1 gardent le multiplicateur de vitesse).
 
 ## Nouveautés 2.9.1
 - **R2 = vitesse** (mode Angle) : la pression de la gâchette règle une vitesse de croisière. À moitié enfoncée, le drone se stabilise à la moitié de la *vitesse max gâchette* (80 km/h par défaut, panneau Manette) ; à fond, il atteint la vitesse max. L2 freine puis recule de la même façon. L'OSD affiche la vitesse visée (« R2 45 km/h »). En mode Fluide, R2 à fond correspond déjà à la vitesse max du mode.
