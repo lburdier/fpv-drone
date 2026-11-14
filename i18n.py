@@ -841,4 +841,17 @@ FR = {
     'Key at Least Every (frames)': 'Une clé au moins toutes les (images)',
     'Editable Curve: also put a key at least every N frames (0 = only where needed)': "Courbe modifiable : ajoute aussi une clé au moins toutes les N images (0 = seulement là où c'est utile)",
     'Keys of the take': 'Clés de la prise',
+    # ---------------------------------------------- 2.12 (path in the viewport)
+    'Edit the path in the 3D viewport: every key becomes a sphere you move like an object (G), the animation follows live. Click again to finish': "Éditer la trajectoire dans la vue 3D : chaque clé devient une sphère que tu déplaces comme un objet (G), l'animation suit en direct. Reclique pour terminer",
+    'Edit Path': 'Éditer la trajectoire',
+    'Path edit finished': 'Édition de la trajectoire terminée',
+    '%d key points: select a sphere and move it (G), the animation follows': "%d points-clés : sélectionne une sphère et déplace-la (G), l'animation suit",
+    'Show Path': 'Afficher la trajectoire',
+    'Draw the recorded flight in the 3D viewport: the path coloured by speed, the keys (yellow dots), the orientation ticks and the current frame': "Dessine le vol enregistré dans la vue 3D : la trajectoire colorée selon la vitesse, les clés (points jaunes), l'orientation et l'image courante",
+    'Smooth After Recording': "Lisser après l'enregistrement",
+    'Smooth every take as soon as the flight stops (Post-flight smoothing settings)': "Lisse chaque prise dès l'arrêt du vol (réglages du lissage après le vol)",
+    'Move the spheres (G) in the 3D view': 'Déplace les sphères (G) dans la vue 3D',
+    'Path': 'Trajectoire',
+    'Smooth the Animation': "Lisser l'animation",
+    'Finish Editing': "Terminer l'édition",
 }

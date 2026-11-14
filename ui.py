@@ -86,6 +86,7 @@ class FPV_PT_main(FPV_PT_base, bpy.types.Panel):
         if s.record:
             row.prop(s, "record_keys", text="")
         col.row(align=True).prop(s, "flight_mode", expand=True)
+        draw_path_box(col.box(), s)
         row = col.row(align=True)
         row.prop(s, "drone_class", text=T("Type"), translate=False)
         row.popover(panel="FPV_PT_drone_presets", icon='PRESET', text="")
@@ -190,6 +191,21 @@ def draw_throttle_mode(L, s):
     L.row().prop(s, "throttle_mode", expand=True)
     if s.throttle_mode == 'CLIMB':
         L.prop(s, "climb_rate")
+
+
+def draw_path_box(box, s):
+    from . import pathviz
+    row = box.row(align=True)
+    row.prop(s, "show_path", text=T("Path"), icon='CURVE_PATH', translate=False)
+    ed = pathviz.editing()
+    row.operator("fpv.path_edit", text=T("Finish Editing") if ed else T("Edit Path"),
+                 icon='CHECKMARK' if ed else 'EDITMODE_HLT', depress=ed, translate=False)
+    row = box.row(align=True)
+    row.operator("fpv.smooth_take", text=T("Smooth the Animation"), icon='MOD_SMOOTH', translate=False)
+    row.operator("fpv.simplify_take", text="", icon='IPO_BEZIER')
+    box.prop(s, "auto_smooth")
+    if ed:
+        _label(box, "Move the spheres (G) in the 3D view", 'INFO')
 
 
 def draw_playstation_box(box):

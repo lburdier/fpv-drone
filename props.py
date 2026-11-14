@@ -324,6 +324,11 @@ class FPV_Settings(bpy.types.PropertyGroup):
                                description="Switch the 3D view to the drone camera while flying")
     # ---------------------------------------------------------------- recording
     record: BoolProperty(name="Record", default=False, description="Bake the flight into keyframes, one key per frame")
+    show_path: BoolProperty(name="Show Path", default=True,
+                            description="Draw the recorded flight in the 3D viewport: the path coloured by speed, the keys "
+                                        "(yellow dots), the orientation ticks and the current frame")
+    auto_smooth: BoolProperty(name="Smooth After Recording", default=False,
+                              description="Smooth every take as soon as the flight stops (Post-flight smoothing settings)")
     record_keys: EnumProperty(name="Keys", default='FRAME', items=[
         ('FRAME', "Every Frame (exact)", "One key per frame: the flight exactly as flown"),
         ('CURVE', "Editable Curve", "A few Bezier keys where the motion changes, within the precision below: easy to "

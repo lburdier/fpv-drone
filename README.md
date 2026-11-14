@@ -1,4 +1,4 @@
-# FPV Drone 2.11.0 – extension Blender 4.2 → 5.x (testée 5.3)
+# FPV Drone 2.12.0 – extension Blender 4.2 → 5.x (testée 5.3)
 
 Pilote une caméra comme un drone FPV (radiocommande, manette ou clavier) et enregistre le vol en keyframes.
 Réécriture complète de *Quadcopter FPV Simulator* (WizardOfRobots, 2021), sous licence GPL-3.0-or-later.
@@ -6,10 +6,18 @@ Réécriture complète de *Quadcopter FPV Simulator* (WizardOfRobots, 2021), sou
 Testée sur Blender **5.0.1, 5.1.2 et 5.3.0**. QR code : bibliothèque *QR Code generator* de Project Nayuki (MIT), incluse.
 
 ## Installation
-Glisse `fpv_drone-2.11.0.zip` dans la fenêtre de Blender, ou *Edit › Preferences › Get Extensions › ⌄ › Install from Disk*.
+Glisse `fpv_drone-2.12.0.zip` dans la fenêtre de Blender, ou *Edit › Preferences › Get Extensions › ⌄ › Install from Disk*.
 Le panneau apparaît dans la Vue 3D › barre latérale (N) › onglet **FPV Drone**.
 
 Aucune installation pip ni pygame n'est nécessaire sous Windows.
+
+## Nouveautés 2.12
+- **La trajectoire dans la vue 3D** (case *Trajectoire* dans le panneau principal) : le vol enregistré est dessiné directement dans la vue, à partir de l'animation elle-même, donc exactement ce qui sera rendu.
+  - La ligne est colorée selon la vitesse (bleu lent → orange / rouge rapide).
+  - Les clés apparaissent en points jaunes, l'image courante en point blanc, avec des traits d'orientation.
+  - Elle reste lisible derrière les bâtiments et se met à jour toute seule.
+- **Éditer la trajectoire** : chaque clé devient une sphère que tu déplaces dans la vue 3D comme un objet (G, accrochage…), et l'animation suit en direct. Si tu retouches dans le Graph Editor, les sphères suivent aussi. *Terminer l'édition* retire les sphères et garde les modifications. Ça marche le mieux avec une prise en *Courbe modifiable* ; au-delà de 400 clés, simplifie d'abord la prise.
+- **Lisser l'animation** directement dans le panneau principal, et **Lisser après l'enregistrement** pour que chaque prise soit lissée automatiquement dès la fin du vol.
 
 ## Nouveautés 2.11
 - **Enregistrement en courbe modifiable** (*Clés : Courbe modifiable*, à côté du bouton Enregistrer, ou panneau Enregistrement) : au lieu d'une clé par image, la prise est écrite avec **quelques clés de Bézier**, placées là où le mouvement change (virages, départs, arrêts). Tu peux ensuite retoucher la courbe à la main dans le Graph Editor pour composer tes plans.

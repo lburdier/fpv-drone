@@ -2,7 +2,7 @@
 import time
 import bpy
 from . import inputs, session, hud, rig, phone, perf, optimize, collide, physcam, look, tune, i18n, updater
-from . import smooth, refly, model
+from . import smooth, refly, model, pathviz
 from .i18n import T, CTX
 
 
@@ -225,6 +225,11 @@ class FPV_OT_fly(_Op, bpy.types.Operator):
         elif self.sess.record and self.sess.frames_recorded:
             self.report({'INFO'}, T("FPV take recorded: %d frames (%d -> %d), top speed %.0f km/h") % (
                 self.sess.frames_recorded, self.sess.frame0, self.sess.frame - 1, self.sess.max_speed * 3.6))
+            if getattr(context.scene.fpv, "auto_smooth", False):
+                try:
+                    bpy.ops.fpv.smooth_take()
+                except Exception as e:
+                    self.report({'WARNING'}, "FPV: %s" % e)
             kw = getattr(self.sess, "keys_written", None)
             if kw:
                 self.report({'INFO'}, T("Editable curve: %d position keys, %d rotation keys, %d camera keys") % kw)
@@ -787,6 +792,35 @@ def simplify_take(context):
     return len(frames), n_loc, n_rot, n_cam
 
 
+class FPV_OT_path_edit(_Op, bpy.types.Operator):
+    """Edit the path in the 3D viewport: every key becomes a sphere you move like an object (G), the animation follows live. Click again to finish"""
+    bl_idname = "fpv.path_edit"
+    bl_label = "Edit Path"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.scene.fpv.drone is not None and not context.window_manager.fpv_state.flying
+
+    def execute(self, context):
+        if pathviz.editing(context):
+            pathviz.stop_edit(context)
+            pathviz.tag_redraw()
+            self.report({'INFO'}, T("Path edit finished"))
+            return {'FINISHED'}
+        try:
+            n, _rng = pathviz.start_edit(context)
+        except Exception as e:
+            self.report({'ERROR'}, T(str(e)))
+            return {'CANCELLED'}
+        context.scene.fpv.show_path = True
+        for o in context.selected_objects:
+            o.select_set(False)
+        pathviz.tag_redraw()
+        self.report({'INFO'}, T("%d key points: select a sphere and move it (G), the animation follows") % n)
+        return {'FINISHED'}
+
+
 class FPV_OT_simplify_take(_Op, bpy.types.Operator):
     """Turn the recorded take into an editable curve: a few Bezier keys where the motion changes (within the precision settings), rotation as X / Y / Z angles. Undoable"""
     bl_idname = "fpv.simplify_take"
@@ -946,7 +980,7 @@ class FPV_OT_update_page(_Op, bpy.types.Operator):
         return {'FINISHED'}
 
 
-classes = (FPV_OT_simplify_take, FPV_OT_smooth_take, FPV_OT_refly, FPV_OT_add_model, FPV_OT_add_course, FPV_OT_language, FPV_OT_update_check, FPV_OT_update_install, FPV_OT_update_page, FPV_OT_tune_blender, FPV_OT_untune_blender, FPV_OT_look_apply, FPV_OT_look_remove, FPV_OT_physcam_bake, FPV_OT_target_from_curve, FPV_OT_target_from_take, FPV_OT_target_new, FPV_OT_optimize, FPV_OT_restore, FPV_OT_phone_link, FPV_OT_phone_copy, FPV_OT_fly, FPV_OT_create_rig, FPV_OT_reset, FPV_OT_clear_take, FPV_OT_start_here, FPV_OT_preset,
+classes = (FPV_OT_path_edit, FPV_OT_simplify_take, FPV_OT_smooth_take, FPV_OT_refly, FPV_OT_add_model, FPV_OT_add_course, FPV_OT_language, FPV_OT_update_check, FPV_OT_update_install, FPV_OT_update_page, FPV_OT_tune_blender, FPV_OT_untune_blender, FPV_OT_look_apply, FPV_OT_look_remove, FPV_OT_physcam_bake, FPV_OT_target_from_curve, FPV_OT_target_from_take, FPV_OT_target_new, FPV_OT_optimize, FPV_OT_restore, FPV_OT_phone_link, FPV_OT_phone_copy, FPV_OT_fly, FPV_OT_create_rig, FPV_OT_reset, FPV_OT_clear_take, FPV_OT_start_here, FPV_OT_preset,
            FPV_OT_monitor, FPV_OT_learn_axis)
 
 
