@@ -111,10 +111,10 @@ class FPV_Settings(bpy.types.PropertyGroup):
                               description="Altitude Hold: vertical speed with the stick fully up / down")
     use_triggers: BoolProperty(name="Triggers: Forward / Back", default=False,
                                description="R2 (RT) flies forward, L2 (LT) backward: the more you press, the faster. "
-                                           "Angle and Smooth modes; the throttle stick still climbs / descends")
+                                           "Acro, Angle and Smooth modes; the throttle stick still climbs / descends")
     axis_forward: IntProperty(name="Forward Axis", default=5, min=0, max=7, description="R2 / RT on a PS or Xbox pad")
     trigger_speed: FloatProperty(name="Trigger Max Speed (km/h)", default=80.0, min=1.0, soft_max=200.0, max=2000.0,
-                                 description="Speed with R2 fully pressed (Angle and Smooth modes). The pressure sets "
+                                 description="Speed with R2 fully pressed (Acro, Angle and Smooth modes). The pressure sets "
                                              "the speed (half pressed = half the speed), held like a cruise control. "
                                              "Change it in flight with D-pad up / down (or Home / End)")
     axis_backward: IntProperty(name="Backward Axis", default=4, min=0, max=7, description="L2 / LT on a PS or Xbox pad")

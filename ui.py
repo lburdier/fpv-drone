@@ -161,7 +161,7 @@ class FPV_PT_controller(_Sub, bpy.types.Panel):
             row = box.row(align=True)
             row.prop(s, "axis_forward", text=T("R2 axis"), translate=False)
             row.prop(s, "axis_backward", text=T("L2 axis"), translate=False)
-            if s.flight_mode in ('ANGLE', 'CINE'):
+            if s.flight_mode in ('ACRO', 'ANGLE', 'CINE'):
                 col = box.column(align=True)
                 col.prop(s, "trigger_speed")
                 col.prop(s, "trigger_step")
@@ -169,7 +169,7 @@ class FPV_PT_controller(_Sub, bpy.types.Panel):
                 _label(box, "In flight: D-pad up / down (or Home / End) = R2 power + / -", 'INFO')
                 _label(box, "Throttle stick: climb / descend while R2 flies forward", 'INFO')
             else:
-                _label(box, "Triggers work in Angle and Smooth modes", 'ERROR')
+                _label(box, "Triggers work in Acro, Angle and Smooth modes", 'ERROR')
         L.prop(s, "deadband")
         L.prop(s, "rc_smoothing")
 
