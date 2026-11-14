@@ -81,7 +81,10 @@ class FPV_PT_main(FPV_PT_base, bpy.types.Panel):
         rec = s.record
         big.operator("fpv.fly", text=T("Fly + Record") if rec else T("Fly"), icon='REC' if rec else 'ORIENTATION_GIMBAL',
                      translate=False)
-        col.prop(s, "record", toggle=True, icon='REC')
+        row = col.row(align=True)
+        row.prop(s, "record", toggle=True, icon='REC')
+        if s.record:
+            row.prop(s, "record_keys", text="")
         col.row(align=True).prop(s, "flight_mode", expand=True)
         row = col.row(align=True)
         row.prop(s, "drone_class", text=T("Type"), translate=False)
@@ -506,6 +509,13 @@ class FPV_PT_record(_Sub, bpy.types.Panel):
         row.operator("fpv.start_here", text="", icon='TIME')
         L.prop(s, "replace_take"); L.prop(s, "sync_scene"); L.prop(s, "extend_end"); L.prop(s, "countdown")
         L.operator("fpv.clear_take", text=T("Clear Take"), icon='TRASH', translate=False)
+        box = L.box()
+        _label(box, "Keys of the take", 'IPO_BEZIER')
+        box.prop(s, "record_keys")
+        col = box.column(align=True)
+        col.active = s.record_keys == 'CURVE'
+        col.prop(s, "key_tol_pos"); col.prop(s, "key_tol_rot"); col.prop(s, "key_max_gap")
+        box.operator("fpv.simplify_take", text=T("Simplify Take"), icon='IPO_BEZIER', translate=False)
         box = L.box()
         _label(box, "Post-flight smoothing", 'MOD_SMOOTH')
         col = box.column(align=True)

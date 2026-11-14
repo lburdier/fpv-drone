@@ -225,6 +225,9 @@ class FPV_OT_fly(_Op, bpy.types.Operator):
         elif self.sess.record and self.sess.frames_recorded:
             self.report({'INFO'}, T("FPV take recorded: %d frames (%d -> %d), top speed %.0f km/h") % (
                 self.sess.frames_recorded, self.sess.frame0, self.sess.frame - 1, self.sess.max_speed * 3.6))
+            kw = getattr(self.sess, "keys_written", None)
+            if kw:
+                self.report({'INFO'}, T("Editable curve: %d position keys, %d rotation keys, %d camera keys") % kw)
         try:
             if self.area:
                 self.area.tag_redraw()
@@ -763,6 +766,49 @@ class FPV_OT_untune_blender(_Op, bpy.types.Operator):
         return {'FINISHED'}
 
 
+def simplify_take(context):
+    """Re-write the drone's take (and its camera's) as editable Bezier keys. Returns the key counts."""
+    from . import keyreduce
+    s = context.scene.fpv
+    obj = s.drone
+    rng = smooth.take_range(obj, s.record_start)
+    if rng is None:
+        raise RuntimeError("No recorded take to smooth (record a flight first)")
+    frames = list(range(rng[0], rng[1] + 1))
+    tol_p = s.key_tol_pos / max(1e-6, s.meters_per_unit)
+    locs, quats = keyreduce.sample_take(obj, frames)
+    n_loc, n_rot = keyreduce.write_take(obj, frames, locs, quats, tol_p, s.key_tol_rot, s.key_max_gap)
+    n_cam = 0
+    cam = rig.find_rig_camera(obj)
+    if cam is not None:
+        _l, cq = keyreduce.sample_take(cam, frames)
+        if cq is not None:
+            _l, n_cam = keyreduce.write_take(cam, frames, None, cq, tol_p, s.key_tol_rot, s.key_max_gap)
+    return len(frames), n_loc, n_rot, n_cam
+
+
+class FPV_OT_simplify_take(_Op, bpy.types.Operator):
+    """Turn the recorded take into an editable curve: a few Bezier keys where the motion changes (within the precision settings), rotation as X / Y / Z angles. Undoable"""
+    bl_idname = "fpv.simplify_take"
+    bl_label = "Simplify Take"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.scene.fpv.drone is not None and not context.window_manager.fpv_state.flying
+
+    def execute(self, context):
+        try:
+            n, kl, kr, kc = simplify_take(context)
+        except Exception as e:
+            self.report({'ERROR'}, T(str(e)))
+            return {'CANCELLED'}
+        context.scene.frame_set(context.scene.frame_current)
+        self.report({'INFO'}, T("Editable curve: %d frames -> %d position keys, %d rotation keys, %d camera keys")
+                    % (n, kl, kr, kc))
+        return {'FINISHED'}
+
+
 class FPV_OT_smooth_take(_Op, bpy.types.Operator):
     """Smooth the recorded take for a cinematic move: calmer path and orientation, camera shake removed. Same timing, undoable"""
     bl_idname = "fpv.smooth_take"
@@ -781,6 +827,11 @@ class FPV_OT_smooth_take(_Op, bpy.types.Operator):
         except Exception as e:
             self.report({'ERROR'}, T(str(e)))
             return {'CANCELLED'}
+        if s.record_keys == 'CURVE':                  # keep the take editable after smoothing
+            try:
+                simplify_take(context)
+            except Exception as e:
+                self.report({'WARNING'}, T(str(e)))
         context.scene.frame_set(context.scene.frame_current)
         self.report({'INFO'}, T("Take smoothed: %d frames") % n)
         return {'FINISHED'}
@@ -895,7 +946,7 @@ class FPV_OT_update_page(_Op, bpy.types.Operator):
         return {'FINISHED'}
 
 
-classes = (FPV_OT_smooth_take, FPV_OT_refly, FPV_OT_add_model, FPV_OT_add_course, FPV_OT_language, FPV_OT_update_check, FPV_OT_update_install, FPV_OT_update_page, FPV_OT_tune_blender, FPV_OT_untune_blender, FPV_OT_look_apply, FPV_OT_look_remove, FPV_OT_physcam_bake, FPV_OT_target_from_curve, FPV_OT_target_from_take, FPV_OT_target_new, FPV_OT_optimize, FPV_OT_restore, FPV_OT_phone_link, FPV_OT_phone_copy, FPV_OT_fly, FPV_OT_create_rig, FPV_OT_reset, FPV_OT_clear_take, FPV_OT_start_here, FPV_OT_preset,
+classes = (FPV_OT_simplify_take, FPV_OT_smooth_take, FPV_OT_refly, FPV_OT_add_model, FPV_OT_add_course, FPV_OT_language, FPV_OT_update_check, FPV_OT_update_install, FPV_OT_update_page, FPV_OT_tune_blender, FPV_OT_untune_blender, FPV_OT_look_apply, FPV_OT_look_remove, FPV_OT_physcam_bake, FPV_OT_target_from_curve, FPV_OT_target_from_take, FPV_OT_target_new, FPV_OT_optimize, FPV_OT_restore, FPV_OT_phone_link, FPV_OT_phone_copy, FPV_OT_fly, FPV_OT_create_rig, FPV_OT_reset, FPV_OT_clear_take, FPV_OT_start_here, FPV_OT_preset,
            FPV_OT_monitor, FPV_OT_learn_axis)
 
 

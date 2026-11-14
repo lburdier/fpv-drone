@@ -324,6 +324,18 @@ class FPV_Settings(bpy.types.PropertyGroup):
                                description="Switch the 3D view to the drone camera while flying")
     # ---------------------------------------------------------------- recording
     record: BoolProperty(name="Record", default=False, description="Bake the flight into keyframes, one key per frame")
+    record_keys: EnumProperty(name="Keys", default='FRAME', items=[
+        ('FRAME', "Every Frame (exact)", "One key per frame: the flight exactly as flown"),
+        ('CURVE', "Editable Curve", "A few Bezier keys where the motion changes, within the precision below: easy to "
+                                    "edit in the Graph Editor (rotation as X / Y / Z angles)")])
+    key_tol_pos: FloatProperty(name="Position Precision (m)", default=0.05, min=0.001, soft_max=2.0, max=100.0,
+                               description="Editable Curve: how far the curve may move away from the flown path. "
+                                           "Higher = fewer keys, smoother")
+    key_tol_rot: FloatProperty(name="Rotation Precision", default=0.01745, min=0.0005, max=0.5236, subtype='ANGLE',
+                               description="Editable Curve: how far the rotation may move away from the flown one. "
+                                           "Higher = fewer keys, calmer camera")
+    key_max_gap: IntProperty(name="Key at Least Every (frames)", default=0, min=0, max=1000,
+                             description="Editable Curve: also put a key at least every N frames (0 = only where needed)")
     record_start: IntProperty(name="Start Frame", default=1)
     replace_take: BoolProperty(name="Replace Previous Take", default=True,
                                description="Delete the drone's existing keys from the start frame before recording")

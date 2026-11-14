@@ -237,6 +237,7 @@ class FlightSession:
         self.frames_recorded = 0
         self.max_speed = 0.0
         self.rec_buf = []                   # recorded samples: written in one pass at the end (no per-frame keyframe_insert)
+        self.keys_written = None            # Editable Curve: (location, rotation, camera) key counts
         self.cam_keyed = False
         self.in_buf = []                    # recorded inputs, one entry per tick from the first armed tick: (dt, values)
         self.in_events = []                 # (tick index, 'reset' | 'fire' | 'recenter')
@@ -834,6 +835,10 @@ class FlightSession:
             return 0
         frames = [b[0] for b in buf]
         obj = self.obj
+        if getattr(self.s, "record_keys", 'FRAME') == 'CURVE':
+            self.keys_written = self._flush_curve(frames, buf)
+            self.rec_buf = []
+            return len(frames)
         obj.rotation_mode = 'QUATERNION'
         write_keys(obj, "location", frames, [b[1] for b in buf])
         write_keys(obj, "rotation_quaternion", frames, [b[2] for b in buf])
@@ -841,6 +846,19 @@ class FlightSession:
             write_keys(self.cam, "rotation_quaternion", frames, [b[3] for b in buf])
         self.rec_buf = []
         return len(frames)
+
+    def _flush_curve(self, frames, buf):
+        """Editable take: a few Bezier keys within the precision settings (see keyreduce)."""
+        from . import keyreduce
+        s = self.s
+        tol_p = s.key_tol_pos / max(1e-6, s.meters_per_unit)
+        n_loc, n_rot = keyreduce.write_take(self.obj, frames, [b[1] for b in buf], [b[2] for b in buf],
+                                            tol_p, s.key_tol_rot, s.key_max_gap)
+        n_cam = 0
+        if self.cam is not None and self.cam_keyed:
+            _l, n_cam = keyreduce.write_take(self.cam, frames, None, [b[3] for b in buf], tol_p, s.key_tol_rot,
+                                              s.key_max_gap)
+        return n_loc, n_rot, n_cam
 
     def push_telemetry(self):
         from . import phone

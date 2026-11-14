@@ -75,10 +75,20 @@ def smooth_take(context, obj, cam, start, pos_s, rot_s, cam_amount):
     if pos_s > 0.0 and loc_ch:
         loc = gaussian(_sample(loc_ch, frames), pos_s * fps)
         write_keys(obj, "location", frames, [tuple(r) for r in loc])
-    if rot_s > 0.0 and rot_ch and all(c is not None for c in rot_ch):
+    eul_ch = _channels(obj, "rotation_euler", 3)
+    if rot_s > 0.0 and obj.rotation_mode == 'QUATERNION' and rot_ch and all(c is not None for c in rot_ch):
         q = smooth_quats(_sample(rot_ch, frames), rot_s * fps)
         write_keys(obj, "rotation_quaternion", frames, [tuple(r) for r in q])
-    if cam is not None and cam_amount > 0.0:
+    elif rot_s > 0.0 and eul_ch and all(c is not None for c in eul_ch):       # Editable Curve takes: Euler XYZ
+        e = gaussian(_sample(eul_ch, frames), rot_s * fps)
+        write_keys(obj, "rotation_euler", frames, [tuple(r) for r in e])
+    if cam is not None and cam_amount > 0.0 and cam.rotation_mode != 'QUATERNION':
+        ech = _channels(cam, "rotation_euler", 3)
+        if ech and all(c is not None for c in ech):
+            ce = _sample(ech, frames)
+            mixed = ce * (1.0 - cam_amount) + gaussian(ce, 0.4 * fps) * cam_amount
+            write_keys(cam, "rotation_euler", frames, [tuple(r) for r in mixed])
+    elif cam is not None and cam_amount > 0.0:
         cch = _channels(cam, "rotation_quaternion", 4)
         if cch and all(c is not None for c in cch):
             cq = continuous_quats(_sample(cch, frames))

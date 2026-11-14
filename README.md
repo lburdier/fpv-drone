@@ -1,4 +1,4 @@
-# FPV Drone 2.10.4 – extension Blender 4.2 → 5.x (testée 5.3)
+# FPV Drone 2.11.0 – extension Blender 4.2 → 5.x (testée 5.3)
 
 Pilote une caméra comme un drone FPV (radiocommande, manette ou clavier) et enregistre le vol en keyframes.
 Réécriture complète de *Quadcopter FPV Simulator* (WizardOfRobots, 2021), sous licence GPL-3.0-or-later.
@@ -6,10 +6,18 @@ Réécriture complète de *Quadcopter FPV Simulator* (WizardOfRobots, 2021), sou
 Testée sur Blender **5.0.1, 5.1.2 et 5.3.0**. QR code : bibliothèque *QR Code generator* de Project Nayuki (MIT), incluse.
 
 ## Installation
-Glisse `fpv_drone-2.10.4.zip` dans la fenêtre de Blender, ou *Edit › Preferences › Get Extensions › ⌄ › Install from Disk*.
+Glisse `fpv_drone-2.11.0.zip` dans la fenêtre de Blender, ou *Edit › Preferences › Get Extensions › ⌄ › Install from Disk*.
 Le panneau apparaît dans la Vue 3D › barre latérale (N) › onglet **FPV Drone**.
 
 Aucune installation pip ni pygame n'est nécessaire sous Windows.
+
+## Nouveautés 2.11
+- **Enregistrement en courbe modifiable** (*Clés : Courbe modifiable*, à côté du bouton Enregistrer, ou panneau Enregistrement) : au lieu d'une clé par image, la prise est écrite avec **quelques clés de Bézier**, placées là où le mouvement change (virages, départs, arrêts). Tu peux ensuite retoucher la courbe à la main dans le Graph Editor pour composer tes plans.
+  - La rotation est écrite en angles **X / Y / Z** (lisibles et modifiables), sans sauts de 360°.
+  - La courbe reste fidèle au vol : **Précision de position** (5 cm par défaut) et **Précision de rotation** (1° par défaut), vérifiées sur chaque image avec l'évaluation de Blender. Plus de précision donne plus de clés ; moins de précision, une courbe plus lisse.
+  - **Une clé au moins toutes les N images** (optionnel) pour avoir des points réguliers à déplacer.
+  - **Simplifier la prise** convertit une prise déjà enregistrée image par image. *Lisser la prise* garde la courbe modifiable dans ce mode. *Revoler la prise* l'écrit aussi en courbe modifiable.
+  - Si d'autres prises de la timeline sont en quaternions, la rotation reste en quaternions pour ne rien casser.
 
 ## Nouveautés 2.10.4
 - **Acro : R2 avance là où pointe la caméra** : la poussée R2 suit la direction de la caméra (inclinaison caméra comprise), en 3D : caméra vers le haut = le drone monte, vers le bas = il plonge. L2 recule dans l'axe de la caméra. Toujours sans jamais faire tourner le drone.
