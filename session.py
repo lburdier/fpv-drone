@@ -223,7 +223,7 @@ class FlightSession:
         self.trig_f = 0.0                   # same, smoothed like the sticks
         self.trig_i = 0.0                   # speed controller integral (pitch units)
         self.trig_target = None             # km/h shown on the OSD while a trigger is pressed
-        self.trig_on = False                # Acro: the R2 cruise control is driving the pitch axis this sub-step
+        self.trig_brake = False             # Acro: R2 released, braking the forward speed it gave
         self.trig_hold = False              # 'Only R2 moves forward': R2 released = forward speed held at 0
         self.power_clock = -100.0           # last in-flight change of the R2 power (OSD confirmation)
         self.raw = [0.0] * 8
@@ -331,7 +331,7 @@ class FlightSession:
             self.trig = b.trigger() if hasattr(b, "trigger") else 0.0
             # re-fly of a take flown with 'Only R2 moves forward': same braking when R2 is released
             self.trig_hold = (self.replay is not None and s.use_triggers and getattr(s, "trigger_only", True)
-                              and s.flight_mode in ('ACRO', 'ANGLE', 'CINE'))
+                              and s.flight_mode in ('ANGLE', 'CINE'))
             self.raw = [st[3], st[2], st[0] * 2 - 1, st[1], 0, 0, 0, 0]
             return st
         if isinstance(b, inputs.KeyboardBackend):      # fixed layout, ignore the joystick mapping
@@ -365,7 +365,7 @@ class FlightSession:
             # Angle: cruise-control speed handled in the physics step. Smooth: forward speed added to the
             # pitch stick's. In both the throttle stick still climbs / descends at the same time.
             self.trig = flight.apply_deadband(fwd, 0.04) - flight.apply_deadband(back, 0.04)
-            if getattr(s, "trigger_only", True):
+            if getattr(s, "trigger_only", True) and s.flight_mode != 'ACRO':
                 pitch = 0.0                             # only R2 / L2 fly forward / backward
                 self.trig_hold = True
         self.sticks = (max(0.0, min(1.0, thr)), yaw, pitch, roll)
@@ -456,10 +456,7 @@ class FlightSession:
             if self.s.flight_mode == 'ANGLE' and not crashed:
                 pitch = self._trigger_pitch(pitch, p)
             elif self.s.flight_mode == 'ACRO':
-                # Acro + R2: the cruise control sets a forward tilt held on the pitch axis (see Drone.target_rates)
-                self.trig_on = False
-                hold = self._trigger_pitch(pitch, p) if not crashed else None
-                self.drone.pitch_hold = hold if self.trig_on else None
+                self.drone.push = None if crashed else self._trigger_push(pitch, p)
             if crashed:
                 flight.step_free(self.drone, p, SUBSTEP)
             elif motion:
@@ -545,6 +542,39 @@ class FlightSession:
         self.power_clock = time.perf_counter()
         return s.trigger_speed
 
+    def _trigger_push(self, pitch, p):
+        """R2 / L2 in Acro: a horizontal push along the drone's heading, cruise-controlled to the R2 speed.
+        It never rotates the drone: the attitude stays fully free (flips, rolls, any lean). Released: the same
+        force brakes the forward speed to 0 (stops as soon as the pilot moves the pitch stick)."""
+        d = self.drone
+        rgt = d.q @ Vector((1.0, 0.0, 0.0))                     # heading from the body's right axis
+        if abs(rgt.z) < 0.95:
+            h = atan2(rgt.y, rgt.x)
+        else:                                                   # rolled on its side: use the nose
+            nose = d.q @ Vector((0.0, 1.0, 0.0))
+            h = atan2(-nose.x, nose.y)
+        fwd = Vector((-sin(h), cos(h), 0.0))
+        v_f = (d.vel * p.mpu).dot(fwd)
+        if abs(self.trig_f) >= 0.01:
+            v_des = self._trigger_curve() * self.s.trigger_speed / 3.6
+            err = v_des - v_f
+            a = err * 2.5 + self.trig_i
+            if abs(a) < 20.0 or (a > 0.0) != (err > 0.0):       # integral = the drag it has to beat
+                self.trig_i = max(-20.0, min(20.0, self.trig_i + err * SUBSTEP * 2.0))
+            self.trig_target = abs(self._trigger_curve()) * self.s.trigger_speed * p.boost
+            self.trig_brake = getattr(self.s, "trigger_only", True)
+        else:
+            self.trig_i = 0.0
+            self.trig_target = None
+            if not self.trig_brake:
+                return None
+            if abs(v_f) < 0.3 or abs(pitch) > 0.05:             # stopped, or the pilot takes over
+                self.trig_brake = False
+                return None
+            a = -v_f * 2.5
+        a = max(-20.0, min(20.0, a))
+        return fwd * a
+
     def _trigger_pitch(self, pitch, p):
         """R2 / L2 in Angle mode: the pressure sets a forward (or backward) SPEED, held like a cruise control.
         Half pressed = half of Trigger Max Speed. The pitch stick still adds on top."""
@@ -556,14 +586,10 @@ class FlightSession:
             self.trig_vprev = None
             self.trig_a = 0.0
             return pitch
-        self.trig_on = True
         c = self._trigger_curve()                               # a bit finer at light pressure
         v_des = c * self.s.trigger_speed / 3.6                  # m/s (pilot physics: the Speed Multiplier applies)
         d = self.drone
         h = d.heading
-        if self.s.flight_mode == 'ACRO':                        # Acro has no held heading: the body's right axis
-            rgt = d.q @ Vector((1.0, 0.0, 0.0))
-            h = atan2(rgt.y, rgt.x)
         fwd = Vector((-sin(h), cos(h), 0.0))
         v_f = (d.vel * p.mpu).dot(fwd)
         err = v_des - v_f

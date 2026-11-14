@@ -12,7 +12,7 @@ What makes it feel like a real quad:
 * wind + gusts (Ornstein-Uhlenbeck turbulence), ground effect near the floor
 """
 import random
-from math import radians, exp, atan2, sqrt, sin, cos, tan, acos, asin
+from math import radians, exp, atan2, sqrt, sin, cos, tan, acos
 from mathutils import Vector, Quaternion, Matrix
 
 G = 9.81
@@ -183,7 +183,7 @@ class Drone:
         self.climb_i = 0.0                   # altitude hold: integral of the climb-rate error
         self.alt_hold = None                 # altitude hold: locked height (m) while the stick is centred
         self.tilt_cap = None                 # altitude hold (Angle): tilt limit that keeps thrust for the climb
-        self.pitch_hold = None               # Acro + R2: forward tilt held on the pitch axis (-1..1 of max angle)
+        self.push = None                     # Acro + R2: extra horizontal acceleration (m/s², world), no rotation
         rng = random.Random(seed)
         self._gust = [_OU(1.8, rng) for _ in range(3)]
         self._turb = [_OU(0.12, rng) for _ in range(3)]
@@ -195,19 +195,7 @@ class Drone:
     # --------------------------------------------------------------------- stick -> target body rates
     def target_rates(self, yaw, pitch, roll, p, dt):
         if p.mode == 'ACRO':
-            wx = -radians(stick_rate(p, 0, pitch))
-            if self.pitch_hold is not None:
-                # Acro + R2: only the pitch axis self-levels, to the tilt the R2 cruise control asks
-                # (released = level = no creeping forward). Roll and yaw stay Acro rates (flips, rolls)
-                up = self.q @ _Z
-                if up.z > 0.25:
-                    nose = self.q @ _Y
-                    cur = -asin(max(-1.0, min(1.0, nose.z)))            # nose-down angle
-                    want = self.pitch_hold * p.max_angle
-                    if self.tilt_cap is not None:
-                        want = max(-self.tilt_cap, min(self.tilt_cap, want))
-                    wx = max(-14.0, min(14.0, -(want - cur) * 9.0))
-            return Vector((wx,
+            return Vector((-radians(stick_rate(p, 0, pitch)),
                            radians(stick_rate(p, 0, roll)),
                            -radians(stick_rate(p, 1, yaw))))
         self.heading -= radians(stick_rate(p, 1, yaw)) * dt
@@ -274,7 +262,7 @@ class Drone:
         v = self.vel * mpu                                       # m/s, ground frame
         if q_des is None and p.climb:
             t = self.climb_throttle(t, up, v, p, dt)
-            if p.mode != 'ANGLE' and self.pitch_hold is None:
+            if p.mode != 'ANGLE':
                 self.tilt_cap = None
         elif q_des is None:
             self.tilt_cap = None
@@ -319,6 +307,8 @@ class Drone:
             authority = 1.0
         if p.gravity:
             acc.z -= G
+        if self.push is not None:
+            acc += self.push
 
         # rates: rate controller limited by the available angular acceleration
         wt = self.rates_to(q_des, 7.0, 6.0) if q_des is not None else self.target_rates(yaw, pitch, roll, p, dt)

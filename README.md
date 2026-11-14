@@ -1,4 +1,4 @@
-# FPV Drone 2.10.2 – extension Blender 4.2 → 5.x (testée 5.3)
+# FPV Drone 2.10.3 – extension Blender 4.2 → 5.x (testée 5.3)
 
 Pilote une caméra comme un drone FPV (radiocommande, manette ou clavier) et enregistre le vol en keyframes.
 Réécriture complète de *Quadcopter FPV Simulator* (WizardOfRobots, 2021), sous licence GPL-3.0-or-later.
@@ -6,13 +6,16 @@ Réécriture complète de *Quadcopter FPV Simulator* (WizardOfRobots, 2021), sou
 Testée sur Blender **5.0.1, 5.1.2 et 5.3.0**. QR code : bibliothèque *QR Code generator* de Project Nayuki (MIT), incluse.
 
 ## Installation
-Glisse `fpv_drone-2.10.2.zip` dans la fenêtre de Blender, ou *Edit › Preferences › Get Extensions › ⌄ › Install from Disk*.
+Glisse `fpv_drone-2.10.3.zip` dans la fenêtre de Blender, ou *Edit › Preferences › Get Extensions › ⌄ › Install from Disk*.
 Le panneau apparaît dans la Vue 3D › barre latérale (N) › onglet **FPV Drone**.
 
 Aucune installation pip ni pygame n'est nécessaire sous Windows.
 
+## Nouveautés 2.10.3
+- **R2 en mode Acro, Acro 100 % libre** : R2 pousse simplement le drone vers l'avant (L2 vers l'arrière), dans la direction où il regarde, jusqu'à la vitesse R2. Il ne touche plus jamais à l'orientation : pas d'inclinaison imposée, pas de mise à plat, tous les sticks restent en Acro pur (flips, tonneaux). Relâcher R2 freine la vitesse avant jusqu'à l'arrêt, toujours sans faire bouger le drone ; bouger le stick de tangage rend la main tout de suite.
+
 ## Nouveautés 2.10.2
-- **R2 en mode Acro** : avec les gâchettes activées, R2 fait maintenant avancer en Acro aussi (même régulateur de vitesse qu'en Angle, L2 recule). Sans R2 le drone reste à plat sur l'axe avant / arrière et freine jusqu'à l'arrêt : il n'avance plus tout seul. Le roulis et le lacet restent en Acro pur (tonneaux possibles). Pour retrouver l'Acro complet au stick (flips avant / arrière), décoche *Seul R2 fait avancer* ou les gâchettes.
+- R2 en mode Acro (remplacé par la 2.10.3).
 
 ## Nouveautés 2.10.1
 - **Seul R2 fait avancer** (réglage par défaut avec les gâchettes, donc avec la config manette PS4/PS5 et Xbox) : le drone n'avance plus tout seul. Le stick de tangage ne fait plus avancer ni reculer (un stick qui dérive légèrement suffisait à faire partir le drone), et relâcher R2 freine jusqu'à l'arrêt au lieu de glisser sur sa lancée. R2 avance, L2 recule, le stick gauche monte / descend et tourne, le stick droit glisse sur les côtés. Désactivable : *Seul R2 fait avancer* (panneau Manette).
