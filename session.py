@@ -456,6 +456,7 @@ class FlightSession:
             if self.s.flight_mode == 'ANGLE' and not crashed:
                 pitch = self._trigger_pitch(pitch, p)
             elif self.s.flight_mode == 'ACRO':
+                self.drone.push_vz = None
                 self.drone.push = None if crashed else self._trigger_push(pitch, p)
             if crashed:
                 flight.step_free(self.drone, p, SUBSTEP)
@@ -543,17 +544,14 @@ class FlightSession:
         return s.trigger_speed
 
     def _trigger_push(self, pitch, p):
-        """R2 / L2 in Acro: a horizontal push along the drone's heading, cruise-controlled to the R2 speed.
-        It never rotates the drone: the attitude stays fully free (flips, rolls, any lean). Released: the same
-        force brakes the forward speed to 0 (stops as soon as the pilot moves the pitch stick)."""
+        """R2 / L2 in Acro: a push along the direction the CAMERA points (camera tilt included; camera up =
+        climbs, down = dives), cruise-controlled to the R2 speed. It never rotates the drone: the attitude stays
+        fully free (flips, rolls, any lean). Released: the same force brakes the speed along the view to 0
+        (stops as soon as the pilot moves the pitch stick)."""
         d = self.drone
-        rgt = d.q @ Vector((1.0, 0.0, 0.0))                     # heading from the body's right axis
-        if abs(rgt.z) < 0.95:
-            h = atan2(rgt.y, rgt.x)
-        else:                                                   # rolled on its side: use the nose
-            nose = d.q @ Vector((0.0, 1.0, 0.0))
-            h = atan2(-nose.x, nose.y)
-        fwd = Vector((-sin(h), cos(h), 0.0))
+        cam_dir = rig.cam_base_euler(self.s.cam_tilt).to_quaternion() @ Vector((0.0, 0.0, -1.0))  # camera: -Z
+        qv = self.view_q if self.view_q is not None else d.q    # what the pilot sees (Smooth Camera included)
+        fwd = (qv @ cam_dir).normalized()
         v_f = (d.vel * p.mpu).dot(fwd)
         if abs(self.trig_f) >= 0.01:
             v_des = self._trigger_curve() * self.s.trigger_speed / 3.6
@@ -563,6 +561,7 @@ class FlightSession:
                 self.trig_i = max(-20.0, min(20.0, self.trig_i + err * SUBSTEP * 2.0))
             self.trig_target = abs(self._trigger_curve()) * self.s.trigger_speed * p.boost
             self.trig_brake = getattr(self.s, "trigger_only", True)
+            d.push_vz = v_des * fwd.z
         else:
             self.trig_i = 0.0
             self.trig_target = None

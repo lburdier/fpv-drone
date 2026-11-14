@@ -1,4 +1,4 @@
-# FPV Drone 2.10.3 – extension Blender 4.2 → 5.x (testée 5.3)
+# FPV Drone 2.10.4 – extension Blender 4.2 → 5.x (testée 5.3)
 
 Pilote une caméra comme un drone FPV (radiocommande, manette ou clavier) et enregistre le vol en keyframes.
 Réécriture complète de *Quadcopter FPV Simulator* (WizardOfRobots, 2021), sous licence GPL-3.0-or-later.
@@ -6,10 +6,13 @@ Réécriture complète de *Quadcopter FPV Simulator* (WizardOfRobots, 2021), sou
 Testée sur Blender **5.0.1, 5.1.2 et 5.3.0**. QR code : bibliothèque *QR Code generator* de Project Nayuki (MIT), incluse.
 
 ## Installation
-Glisse `fpv_drone-2.10.3.zip` dans la fenêtre de Blender, ou *Edit › Preferences › Get Extensions › ⌄ › Install from Disk*.
+Glisse `fpv_drone-2.10.4.zip` dans la fenêtre de Blender, ou *Edit › Preferences › Get Extensions › ⌄ › Install from Disk*.
 Le panneau apparaît dans la Vue 3D › barre latérale (N) › onglet **FPV Drone**.
 
 Aucune installation pip ni pygame n'est nécessaire sous Windows.
+
+## Nouveautés 2.10.4
+- **Acro : R2 avance là où pointe la caméra** : la poussée R2 suit la direction de la caméra (inclinaison caméra comprise), en 3D : caméra vers le haut = le drone monte, vers le bas = il plonge. L2 recule dans l'axe de la caméra. Toujours sans jamais faire tourner le drone.
 
 ## Nouveautés 2.10.3
 - **R2 en mode Acro, Acro 100 % libre** : R2 pousse simplement le drone vers l'avant (L2 vers l'arrière), dans la direction où il regarde, jusqu'à la vitesse R2. Il ne touche plus jamais à l'orientation : pas d'inclinaison imposée, pas de mise à plat, tous les sticks restent en Acro pur (flips, tonneaux). Relâcher R2 freine la vitesse avant jusqu'à l'arrêt, toujours sans faire bouger le drone ; bouger le stick de tangage rend la main tout de suite.

@@ -183,7 +183,8 @@ class Drone:
         self.climb_i = 0.0                   # altitude hold: integral of the climb-rate error
         self.alt_hold = None                 # altitude hold: locked height (m) while the stick is centred
         self.tilt_cap = None                 # altitude hold (Angle): tilt limit that keeps thrust for the climb
-        self.push = None                     # Acro + R2: extra horizontal acceleration (m/s², world), no rotation
+        self.push = None                     # Acro + R2: extra acceleration along the camera (m/s², world)
+        self.push_vz = None                  # Acro + R2: vertical speed (m/s) the altitude hold must follow
         rng = random.Random(seed)
         self._gust = [_OU(1.8, rng) for _ in range(3)]
         self._turb = [_OU(0.12, rng) for _ in range(3)]
@@ -216,7 +217,11 @@ class Drone:
         Returns the motor command; the tilt is compensated so a leaning drone does not sink."""
         st = apply_deadband(stick01 * 2.0 - 1.0, 0.06)
         st = st * abs(st) * 0.4 + st * 0.6                      # finer around the centre
-        if st == 0.0:
+        if self.push_vz is not None:
+            # Acro + R2 along the camera: the height follows the push (camera up = climbs), stick adds on top
+            self.alt_hold = None
+            vz_des = self.push_vz + st * p.climb_rate
+        elif st == 0.0:
             # stick centred: lock the height where the drone is (a little ahead of the climb / descent)
             # (stored in scene units: changing the Speed Multiplier in flight must not move the held height)
             if self.alt_hold is None:
