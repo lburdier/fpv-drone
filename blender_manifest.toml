@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "fpv_drone"
-version = "2.12.0"
+version = "2.14.0"
 name = "FPV Drone"
 tagline = "Fly an FPV drone camera with a radio, gamepad, phone or keyboard"
 maintainer = "Lucas"
@@ -23,3 +23,6 @@ copyright = [
 [permissions]
 network = "Phone radio (local server) and GitHub update checks"
 clipboard = "Copy the phone link"
+
+[build]
+paths_exclude_pattern = ["__pycache__/", "/.git/", "/docs/", "*.zip"]

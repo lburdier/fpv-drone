@@ -9,15 +9,15 @@ French / English interface, automatic updates from the GitHub releases.
 if "bpy" in locals():
     import importlib
     for _m in (i18n, inputs, flight, collide, cull, optimize, phone, props, rig, session, physcam, look, tune,  # noqa: F821
-               hud, perf, updater, prefs, smooth, projectile, model, refly, presets, pathviz, ops, ui):  # noqa: F821
+               hud, perf, updater, prefs, smooth, projectile, model, refly, presets, pathviz, ops, ui, retouche, diagrams):  # noqa: F821
         importlib.reload(_m)
 else:
     from . import (i18n, inputs, flight, collide, cull, optimize, phone, props, rig, session, physcam, look, tune,
-                   hud, perf, updater, prefs, smooth, projectile, model, refly, presets, pathviz, ops, ui)
+                   hud, perf, updater, prefs, smooth, projectile, model, refly, presets, pathviz, ops, ui, retouche, diagrams)
 
 import bpy  # noqa: E402
 
-_modules = (prefs, props, presets, ops, ui)
+_modules = (prefs, props, presets, ops, ui, retouche, diagrams)
 
 
 def register():

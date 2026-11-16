@@ -1,15 +1,59 @@
-# FPV Drone 2.12.0 – extension Blender 4.2 → 5.x (testée 5.3)
+# FPV Drone 2.14.0 – extension Blender 4.2 → 5.x (testée 5.3)
 
 Pilote une caméra comme un drone FPV (radiocommande, manette ou clavier) et enregistre le vol en keyframes.
 Réécriture complète de *Quadcopter FPV Simulator* (WizardOfRobots, 2021), sous licence GPL-3.0-or-later.
 
 Testée sur Blender **5.0.1, 5.1.2 et 5.3.0**. QR code : bibliothèque *QR Code generator* de Project Nayuki (MIT), incluse.
 
+![FPV Drone dans Blender : la trajectoire enregistrée dans la vue 3D et le panneau FPV Drone avec son schéma « Comment ça marche »](docs/interface.png)
+
 ## Installation
-Glisse `fpv_drone-2.12.0.zip` dans la fenêtre de Blender, ou *Edit › Preferences › Get Extensions › ⌄ › Install from Disk*.
+Glisse `fpv_drone-2.14.0.zip` dans la fenêtre de Blender, ou *Edit › Preferences › Get Extensions › ⌄ › Install from Disk*.
 Le panneau apparaît dans la Vue 3D › barre latérale (N) › onglet **FPV Drone**.
 
 Aucune installation pip ni pygame n'est nécessaire sous Windows.
+
+## En images
+
+### Les schémas dynamiques (2.14)
+Les panneaux expliquent eux-mêmes leurs réglages avec un schéma **en direct** : il se redessine dès que tu bouges une valeur.
+
+![Quatre schémas qui suivent les réglages : inclinaison de la caméra, amortissement de la Physics Cam, Super Rate, retouches caméra](docs/schemas_dynamiques.gif)
+
+| Schéma | Panneau | Ce qu'il montre |
+|---|---|---|
+| **Comment ça marche** | FPV Drone | Les 4 étapes : entrée détectée → mode de vol → enregistrement → retouches. L'étape inactive est grisée (ex. *Enregistrer* désactivé = vol d'essai). |
+| **Vitesse de rotation selon le manche** | Vol | La courbe des rates (Betaflight ou Actual) : roulis / tangage en orange, lacet en bleu, valeur à mi-course et au maximum. |
+| **Pourquoi la caméra est inclinée** | Caméra | Le drone de profil en stationnaire puis en vol : à quelle vitesse la caméra regarde l'horizon avec ton inclinaison et ton champ de vision. |
+| **Les forces à plein gaz** | Caractéristiques physiques | Poussée contre poids, gaz du vol stationnaire, inclinaison et vitesse max calculées depuis tes vraies valeurs. |
+| **Comment le drone suit la cible** | Physics Cam | Vue de dessus d'un virage : la cible, le drone tiré par le ressort, où vise le nez, le retard et le dépassement. |
+| **Ce que voit la caméra** | Retouches caméra | L'horizon et le cadre à l'image courante avec le roulis / pano / inclinaison, et des barres pour côté / hauteur / recul. |
+
+![Les six schémas](docs/schemas.png)
+
+Chaque schéma se replie (petit triangle) et l'icône 🖼 à côté de *FR / EN* en haut du panneau les masque tous (aussi dans *Préférences › Add-ons › FPV Drone*).
+
+### Dans les panneaux
+![Les schémas dans la barre latérale : panneau principal, Vol, Caméra, Caractéristiques physiques, Physics Cam, Retouches caméra](docs/panneaux.png)
+
+### En vol : l'OSD
+Vue à travers la caméra FPV pendant un vol enregistré : mode et gaz, vitesse et altitude, sticks, enregistrement (REC), images par seconde et camera culling.
+
+![OSD pendant le vol](docs/osd.png)
+
+## Nouveautés 2.14
+- **Schémas dynamiques dans les panneaux** (voir *En images* ci-dessus) : *Comment ça marche*, rates, inclinaison de la caméra, forces à plein gaz, ressort de la Physics Cam et retouches caméra. Ils suivent chaque réglage, la langue (FR / EN) et la largeur de la barre latérale.
+- Ils sont dessinés par le GPU puis mis en cache : rien n'est recalculé tant qu'aucune valeur ne change, et rien n'est affiché pendant le vol.
+- Nouvelle préférence **Afficher les schémas** (aussi l'icône 🖼 dans l'en-tête du panneau FPV Drone).
+
+## Nouveautés 2.13
+- **Retouches caméra** (panneau *Retouches caméra*) : retouche la caméra d'une prise à n'importe quelle image, par-dessus le vol enregistré, sans toucher à la prise.
+  - Canaux animables : **roulis** (autour de l'axe de visée), **panoramique**, **inclinaison**, **côté**, **hauteur**, **recul / avance**, plus la **focale** et l'**intensité des retouches** (pour les faire apparaître ou disparaître en douceur).
+  - Clique le losange à côté d'un canal pour poser une clé ; *Clé sur tout ici*, *Zéro ici* (retour à la caméra enregistrée) et *Supprimer les clés ici* travaillent à l'image courante. Les clés sont en Bézier adoucies : transitions sans à-coups ni dépassement.
+  - **Redresser l'horizon…** : sur une plage d'images, ramène le roulis de la caméra au maximum choisi (0 = horizon droit), avec une clé toutes les N images. Les vues à la verticale ne sont pas touchées.
+  - Les retouches sont portées par un Empty *FPV_Retouche* et appliquées par une contrainte *Copy Transforms* (après l'original, espaces locaux) : elles s'appliquent dans les axes de la caméra, se rendent sans script et marchent avec la caméra du rig, une caméra seule ou la caméra de la scène. *Retirer* enlève tout.
+
+<img src="docs/schema_retouche.png" width="300" alt="Schéma des retouches caméra">
 
 ## Nouveautés 2.12
 - **La trajectoire dans la vue 3D** (case *Trajectoire* dans le panneau principal) : le vol enregistré est dessiné directement dans la vue, à partir de l'animation elle-même, donc exactement ce qui sera rendu.
@@ -98,6 +142,8 @@ Aucune installation pip ni pygame n'est nécessaire sous Windows.
 - **Mises à jour automatiques** depuis les releases GitHub (dépôt réglable dans les préférences de l'extension, *lburdier/fpv-drone* par défaut). Vérification au plus une fois par jour, installation automatique hors vol (désactivable), respect de *Autoriser l'accès en ligne*. Publier une version = créer une release `vX.Y.Z` avec le zip de l'extension en pièce jointe.
 
 ## Démarrage rapide
+<img src="docs/schema_flow.png" width="300" align="right" alt="Comment ça marche : entrée, vol, enregistrement, ensuite">
+
 1. Place le curseur 3D au point de départ, regarde dans la direction de vol, puis clique sur **+** (*Create FPV Rig*).
 2. Dans **Controller**, choisis ton entrée (*Auto*, *Radio / Joystick*, *Xbox Gamepad* ou *Keyboard*) ou un preset.
 3. Clique sur **Test Controller** : bouge les sticks et regarde quels axes bougent. Sinon, utilise le bouton ● (*Learn*) de chaque voie et bouge uniquement ce stick, vers le haut ou vers la droite.
@@ -161,6 +207,8 @@ Décocher **Realism** revient au modèle simple.
 | Keyboard | — | AZERTY : Z/S gaz, Q/D lacet. QWERTY : W/S, A/D. Les deux par défaut. Flèches = tangage et roulis, Shift = stick à fond, Ctrl = fin |
 
 ## Vol
+<img src="docs/schema_rates.png" width="300" align="right" alt="Vitesse de rotation selon le manche">
+
 - **Acro** : vraie physique FPV, les sticks commandent une vitesse de rotation. Les rates sont celles de Betaflight (RC Rate, Super Rate, Expo) ; le panneau affiche la vitesse maximale en deg/s.
 - **Angle** : le drone s'auto-stabilise et les sticks donnent l'inclinaison. C'est plus simple au clavier ou à la manette.
 - **Thrust/Weight** : en vol stationnaire, les gaz valent environ 1/TWR. **Air Drag** fixe la vitesse de pointe.
@@ -195,6 +243,8 @@ Tout est restauré automatiquement à l'arrêt. L'OSD affiche les **fps** en ver
 - Pas de pause du ramasse-miettes Python pendant le vol. *Draw Distance* répartit les apparitions de tuiles sur plusieurs images.
 
 ## Propriétés physiques (panneau Physical Specs)
+<img src="docs/schema_specs.png" width="300" align="right" alt="Les forces à plein gaz">
+
 Le drone se règle avec de vraies valeurs ; le simulateur en déduit ses coefficients en direct :
 - **Masse (g)** et **poussée par moteur (g)** × **nombre de moteurs** donnent le rapport poussée/poids.
 - **Taille du châssis (mm)** et **Inertie** (où est la masse : 0,3 compact, 0,6 normal, 1+ grosse caméra ou ducts) donnent la vitesse de rotation.
@@ -203,6 +253,8 @@ Le drone se règle avec de vraies valeurs ; le simulateur en déduit ses coeffic
 - Les types (Whoop, Freestyle, Cinématique, Cinelifter) remplissent ces valeurs. Exemple : un 5" de 650 g avec 4 × 1300 g donne poussée/poids 8 et environ 168 km/h.
 
 ## Physics Cam, façon Polyfjord
+<img src="docs/schema_physcam.png" width="300" align="right" alt="Comment le drone suit la cible">
+
 La méthode de Polyfjord, en mieux : une **cible animée** tire le drone comme un ressort. Le drone n'est pas un simple corps rigide : c'est un vrai quad avec la masse, la poussée, la traînée et l'inertie de *Physical Specs*. Pour accélérer, il doit d'abord pencher. Il s'incline donc dans les virages, se cabre pour freiner, prend du retard et dépasse un peu la trajectoire, et rebondit sur les bâtiments.
 1. Une cible : **New Target** (un empty à animer avec I), **Target from Curve** (sélectionne une courbe : la cible la parcourt sur la plage d'images, avec *Ease In/Out*), ou **Target from My Take** (ta prise pilotée devient la cible : la bake la re-vole proprement).
 2. Réglages :

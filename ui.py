@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import bpy
-from . import inputs, phone, i18n, updater, refly
+from . import inputs, phone, i18n, updater, refly, diagrams
 from .i18n import T, CTX
 from .optimize import TILE_COLL
 
@@ -60,6 +60,9 @@ class FPV_PT_main(FPV_PT_base, bpy.types.Panel):
 
     def draw_header_preset(self, context):
         fr = i18n.refresh()
+        p = i18n._prefs()
+        if p is not None:
+            self.layout.prop(p, "show_diagrams", text="", icon='IMAGE_DATA', emboss=False)
         op = self.layout.operator("fpv.language", text="FR" if fr else "EN", emboss=False, translate=False)
         op.lang = 'EN' if fr else 'FR'
 
@@ -98,6 +101,7 @@ class FPV_PT_main(FPV_PT_base, bpy.types.Panel):
             op.value = 1.0
         col.prop(s, "show_hud")
         col.operator("fpv.reset", text=T("Back to Start Point"), icon='LOOP_BACK', translate=False)
+        diagrams.draw(col, context, "flow", diagrams.flow_data(context), "How it works")
 
 
 class FPV_PT_controller(_Sub, bpy.types.Panel):
@@ -255,6 +259,7 @@ class FPV_PT_flight(_Sub, bpy.types.Panel):
             col.prop(s, "yaw_rc_rate", text=T("RC Rate"), translate=False)
             col.prop(s, "yaw_super_rate", text=T("Super Rate"), translate=False)
             col.prop(s, "yaw_expo", text=T("Expo"), translate=False)
+        diagrams.draw(L, context, "rates", diagrams.rates_data(context), "Rotation speed per stick")
         from .flight import stick_rate, FlightParams
         fp = FlightParams(s)
         L.label(text=T("Max rate: %d deg/s  (yaw %d)") % (stick_rate(fp, 0, 1.0), stick_rate(fp, 1, 1.0)),
@@ -364,6 +369,7 @@ class FPV_PT_specs(_Sub, bpy.types.Panel):
         col.label(text=T("Rotation accel  %d °/s²") % round(degrees(s.angular_accel)), translate=False)
         if s.thrust_to_weight < 1.05:
             _label(col, "Too heavy: it cannot take off", 'ERROR')
+        diagrams.draw(L, context, "specs", diagrams.specs_data(context), "Forces at full throttle")
 
 
 class FPV_PT_physcam(_Sub, bpy.types.Panel):
@@ -390,6 +396,7 @@ class FPV_PT_physcam(_Sub, bpy.types.Panel):
         col.prop(s, "pc_look_ahead"); col.prop(s, "pc_yaw_speed"); col.prop(s, "pc_bank")
         col = L.column(align=True)
         col.prop(s, "pc_max_accel"); col.prop(s, "pc_start"); col.prop(s, "pc_seed")
+        diagrams.draw(L, context, "physcam", diagrams.physcam_data(context), "How the drone chases the target")
         _label(L, "Uses Physical Specs, collisions, vibration, horizon lock", 'INFO')
         L.operator("fpv.physcam_bake", text=T("Bake Physics Cam"), icon='PHYSICS', translate=False)
 
@@ -446,7 +453,9 @@ class FPV_PT_camera(_Sub, bpy.types.Panel):
         L = self.layout
         L.use_property_split = True
         L.use_property_decorate = False
-        L.prop(s, "cam_tilt"); L.prop(s, "cam_fov"); L.prop(s, "vibration"); L.prop(s, "horizon_lock"); L.prop(s, "view_through")
+        L.prop(s, "cam_tilt"); L.prop(s, "cam_fov")
+        diagrams.draw(L, context, "camera", diagrams.camera_data(context), "Why the camera is tilted up")
+        L.prop(s, "vibration"); L.prop(s, "horizon_lock"); L.prop(s, "view_through")
         draw_smooth_camera(L.box(), s)
         L.separator()
         L.prop(s, "rig_model")

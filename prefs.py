@@ -23,6 +23,9 @@ class FPV_Preferences(bpy.types.AddonPreferences):
     auto_update: bpy.props.BoolProperty(
         name="Install Automatically", default=True, translation_context=CTX,
         description="Install a new release by itself (never during a flight). Off = a button appears in the panel")
+    show_diagrams: bpy.props.BoolProperty(
+        name="Show Diagrams", default=True, translation_context=CTX,
+        description="Live diagrams in the panels that explain the settings (they follow every change)")
     update_repo: bpy.props.StringProperty(
         name="GitHub Repository", default=updater.DEFAULT_REPO, translation_context=CTX,
         description="owner/name of the GitHub repository whose releases are installed")
@@ -32,6 +35,7 @@ class FPV_Preferences(bpy.types.AddonPreferences):
         i18n.refresh()
         L = self.layout
         L.prop(self, "language", expand=True)
+        L.prop(self, "show_diagrams", icon='IMAGE_DATA')
         box = L.box()
         row = box.row(align=True)
         row.label(text="FPV Drone %s" % updater.current_version_str(), translate=False)
