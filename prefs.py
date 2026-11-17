@@ -26,6 +26,11 @@ class FPV_Preferences(bpy.types.AddonPreferences):
     show_diagrams: bpy.props.BoolProperty(
         name="Show Diagrams", default=True, translation_context=CTX,
         description="Live diagrams in the panels that explain the settings (they follow every change)")
+    ai_autostart: bpy.props.BoolProperty(
+        name="Start the AI Link with Blender", default=True, translation_context=CTX,
+        description="Open the AI Link (127.0.0.1 only, token protected) when the add-on loads, so Claude can "
+                    "fly the drone through the MCP server without clicking anything")
+    ai_port: bpy.props.IntProperty(name="AI Link Port", default=8770, min=1024, max=65535, translation_context=CTX)
     update_repo: bpy.props.StringProperty(
         name="GitHub Repository", default=updater.DEFAULT_REPO, translation_context=CTX,
         description="owner/name of the GitHub repository whose releases are installed")
@@ -47,6 +52,10 @@ class FPV_Preferences(bpy.types.AddonPreferences):
         sub.active = self.check_updates
         sub.prop(self, "auto_update")
         sub.prop(self, "update_repo")
+        box = L.box()
+        box.label(text=T("AI Pilot (Claude)"), icon='LIGHT', translate=False)
+        box.prop(self, "ai_autostart")
+        box.prop(self, "ai_port")
 
 
 def register():

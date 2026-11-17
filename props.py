@@ -73,6 +73,22 @@ def _specs_update(self, context):
         setattr(self, k, v)
 
 
+def _twr_update(self, context):
+    """Thrust/Weight edited by hand while the real specs are on: the motor thrust follows (TWR = motors x thrust /
+    mass), and with it the rotation authority."""
+    if _SPEC_GUARD[0] or not self.use_specs:
+        return
+    from .flight import specs_to_params
+    _SPEC_GUARD[0] = True
+    try:
+        self.spec_thrust = self.thrust_to_weight * self.spec_mass / max(1, self.spec_motors)
+        self.angular_accel = specs_to_params(self.spec_mass, self.spec_thrust, self.spec_motors, self.spec_wheelbase,
+                                             self.spec_inertia, self.spec_area_front,
+                                             self.spec_area_top)["angular_accel"]
+    finally:
+        _SPEC_GUARD[0] = False
+
+
 def _is_drone(self, obj):
     return obj.type in {'EMPTY', 'CAMERA', 'MESH'}
 
@@ -88,6 +104,7 @@ class FPV_Settings(bpy.types.PropertyGroup):
         ('DS4', "PS4 / PS5 Controller", "DualShock 4 or DualSense, USB or Bluetooth, read directly (no DS4Windows or "
                                          "Steam needed). Buttons fly the drone, rumble and light bar on PS4"),
         ('PHONE', "Phone", "Your phone as a touch radio, through the Phone Link (same Wi-Fi)"),
+        ('AI', "AI (Claude)", "An AI assistant flies the drone through the AI Link and its MCP server"),
         ('PYGAME', "Pygame", "Only if pygame is already installed in Blender's Python (any OS)"),
         ('KEYBOARD', "Keyboard", "W/S throttle, A/D yaw, arrows pitch/roll, Shift = full stick, Ctrl = fine")])
     device: EnumProperty(name="Device", items=device_items)
@@ -203,8 +220,10 @@ class FPV_Settings(bpy.types.PropertyGroup):
     yaw_expo: FloatProperty(name="Yaw Expo", default=0.0, min=0.0, max=1.0)
     max_angle: FloatProperty(name="Max Angle", default=radians(55), min=radians(5), max=radians(85), subtype='ANGLE',
                              description="Angle mode tilt limit")
-    thrust_to_weight: FloatProperty(name="Thrust/Weight", default=8.0, min=0.3, max=60.0, soft_max=30.0,
-                                    description="Full-throttle thrust divided by weight. Hover ≈ 1/TWR throttle")
+    thrust_to_weight: FloatProperty(name="Thrust/Weight", default=8.0, min=0.3, max=100.0, soft_max=40.0,
+                                    update=_twr_update,
+                                    description="Full-throttle thrust divided by weight. Hover ≈ 1/TWR throttle. "
+                                                "With Real Specs on, the motor thrust follows")
     throttle_expo: FloatProperty(name="Throttle Expo", default=0.3, min=0.0, max=1.0)
     drone_class: EnumProperty(name="Drone Type", default='FREESTYLE', update=_class_update, items=[
         ('WHOOP', "Cinewhoop 3\"", "Ducted, slow and floaty (~50 km/h), low rates. Indoor / close-up shots"),

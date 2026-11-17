@@ -314,6 +314,9 @@ class _Lazy(dict):
         if key == "DS4":
             from .ds4 import PlayStationBackend
             return PlayStationBackend
+        if key == "AI":
+            from .ai import AIBackend
+            return AIBackend
         raise KeyError(key)
 
 

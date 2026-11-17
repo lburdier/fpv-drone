@@ -623,7 +623,12 @@ class FlightSession:
         elif abs(cmd) < 1.0 or (cmd > 0.0) != (err > 0.0):
             self.trig_i = max(-0.3, min(0.3, self.trig_i + err * SUBSTEP * 0.08))
         self.trig_target = None if idle else abs(c) * self.s.trigger_speed * p.boost
-        return max(-1.0, min(1.0, cmd))
+        # R2 accelerates / brakes harder than the Angle-mode stick limit: lean up to 75 deg while the altitude hold
+        # still has the thrust for it (tilt cap). 55 deg took ~1 s to reach half the R2 speed: felt like lag
+        lim = 1.0
+        if d.tilt_cap is not None and p.max_angle > 1e-3:
+            lim = max(1.0, min(d.tilt_cap, 1.309) / p.max_angle)
+        return max(-lim, min(lim, cmd))
 
     def event(self, kind):
         """Reset / fire / recenter: done now, and remembered for Re-fly."""

@@ -1,4 +1,4 @@
-# FPV Drone 2.14.0 – extension Blender 4.2 → 5.x (testée 5.3)
+# FPV Drone 2.15.0 – extension Blender 4.2 → 5.x (testée 5.3)
 
 Pilote une caméra comme un drone FPV (radiocommande, manette ou clavier) et enregistre le vol en keyframes.
 Réécriture complète de *Quadcopter FPV Simulator* (WizardOfRobots, 2021), sous licence GPL-3.0-or-later.
@@ -8,7 +8,7 @@ Testée sur Blender **5.0.1, 5.1.2 et 5.3.0**. QR code : bibliothèque *QR Code 
 ![FPV Drone dans Blender : la trajectoire enregistrée dans la vue 3D et le panneau FPV Drone avec son schéma « Comment ça marche »](docs/interface.png)
 
 ## Installation
-Glisse `fpv_drone-2.14.0.zip` dans la fenêtre de Blender, ou *Edit › Preferences › Get Extensions › ⌄ › Install from Disk*.
+Glisse `fpv_drone-2.15.0.zip` dans la fenêtre de Blender, ou *Edit › Preferences › Get Extensions › ⌄ › Install from Disk*.
 Le panneau apparaît dans la Vue 3D › barre latérale (N) › onglet **FPV Drone**.
 
 Aucune installation pip ni pygame n'est nécessaire sous Windows.
@@ -40,6 +40,12 @@ Chaque schéma se replie (petit triangle) et l'icône 🖼 à côté de *FR / EN
 Vue à travers la caméra FPV pendant un vol enregistré : mode et gaz, vitesse et altitude, sticks, enregistrement (REC), images par seconde et camera culling.
 
 ![OSD pendant le vol](docs/osd.png)
+
+## Nouveautés 2.15
+- **Pilote IA (Claude)** : Claude peut piloter le drone dans Blender grâce au serveur MCP fourni (`mcp_server.py`, Python standard, aucune dépendance). Le *lien IA* s'ouvre tout seul avec Blender (127.0.0.1 seulement, protégé par un jeton ; désactivable dans les préférences). Une seule fois : `claude mcp add fpv-drone --scope user -- python "%USERPROFILE%\.fpv_drone\mcp_server.py"` (bouton de copie dans le panneau *Pilote IA*, et un autre pour Claude Desktop). Ensuite, demande simplement à Claude : « décolle et avance de 20 m », « fais le tour du cube », « montre-moi ce que voit la caméra ».
+  - Outils : état du drone, démarrer / arrêter le vol, pilote automatique (aller à un point, avancer / monter de X m, tourner de X°, puis tenue de position), sticks manuels pour les figures, réglages, objets autour (pour éviter les obstacles), capture de la caméra.
+- **R2 plus réactif en mode Angle** : R2 penche le drone jusqu'à 75° pour accélérer et freiner (au lieu de 55°) quand la tenue d'altitude a la poussée. La moitié de la vitesse est atteinte en 0,6 s au lieu de 1,1 s.
+- **Poussée / poids modifiable** même avec les specs réelles (le réglage n'est plus grisé) : la poussée des moteurs suit. Maximum relevé à 100.
 
 ## Nouveautés 2.14
 - **Schémas dynamiques dans les panneaux** (voir *En images* ci-dessus) : *Comment ça marche*, rates, inclinaison de la caméra, forces à plein gaz, ressort de la Physics Cam et retouches caméra. Ils suivent chaque réglage, la langue (FR / EN) et la largeur de la barre latérale.

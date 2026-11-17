@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import time
 import bpy
-from . import inputs, session, hud, rig, phone, perf, optimize, collide, physcam, look, tune, i18n, updater
+from . import inputs, session, hud, rig, phone, perf, optimize, collide, physcam, look, tune, i18n, updater, ai
 from . import smooth, refly, model, pathviz
 from .i18n import T, CTX
 
@@ -592,6 +592,41 @@ class FPV_OT_phone_copy(_Op, bpy.types.Operator):
         return {'FINISHED'}
 
 
+class FPV_OT_ai_link(_Op, bpy.types.Operator):
+    """Start / stop the AI Link: lets Claude fly the drone through the FPV Drone MCP server (this PC only)"""
+    bl_idname = "fpv.ai_link"
+    bl_label = "AI Link"
+
+    def execute(self, context):
+        if ai.SERVER is not None:
+            ai.stop()
+            self.report({'INFO'}, T("AI Link stopped"))
+        else:
+            p = context.preferences.addons[__package__].preferences
+            try:
+                ai.start(getattr(p, "ai_port", ai.DEFAULT_PORT))
+            except OSError as e:
+                self.report({'ERROR'}, T("Cannot open port %d (%s). Try another port.") % (p.ai_port, e))
+                return {'CANCELLED'}
+            self.report({'INFO'}, T("AI Link ready: Claude can fly the drone"))
+        _redraw_ui(context)
+        return {'FINISHED'}
+
+
+class FPV_OT_ai_copy(_Op, bpy.types.Operator):
+    """Copy the setup for Claude to the clipboard"""
+    bl_idname = "fpv.ai_copy"
+    bl_label = "Copy"
+    what: bpy.props.EnumProperty(items=[('CODE', "Claude Code", "Command that adds the MCP server to Claude Code"),
+                                        ('DESKTOP', "Claude Desktop", "Block for claude_desktop_config.json")])
+
+    def execute(self, context):
+        context.window_manager.clipboard = ai.claude_command() if self.what == 'CODE' else ai.desktop_config()
+        self.report({'INFO'}, T("Copied: paste it in a terminal") if self.what == 'CODE'
+                    else T("Copied: paste it in claude_desktop_config.json"))
+        return {'FINISHED'}
+
+
 class FPV_OT_optimize(_Op, bpy.types.Operator):
     """Split very heavy meshes into tiles so Blender only draws what the drone camera sees (reversible)"""
     bl_idname = "fpv.optimize_scene"
@@ -980,7 +1015,7 @@ class FPV_OT_update_page(_Op, bpy.types.Operator):
         return {'FINISHED'}
 
 
-classes = (FPV_OT_path_edit, FPV_OT_simplify_take, FPV_OT_smooth_take, FPV_OT_refly, FPV_OT_add_model, FPV_OT_add_course, FPV_OT_language, FPV_OT_update_check, FPV_OT_update_install, FPV_OT_update_page, FPV_OT_tune_blender, FPV_OT_untune_blender, FPV_OT_look_apply, FPV_OT_look_remove, FPV_OT_physcam_bake, FPV_OT_target_from_curve, FPV_OT_target_from_take, FPV_OT_target_new, FPV_OT_optimize, FPV_OT_restore, FPV_OT_phone_link, FPV_OT_phone_copy, FPV_OT_fly, FPV_OT_create_rig, FPV_OT_reset, FPV_OT_clear_take, FPV_OT_start_here, FPV_OT_preset,
+classes = (FPV_OT_path_edit, FPV_OT_simplify_take, FPV_OT_smooth_take, FPV_OT_refly, FPV_OT_add_model, FPV_OT_add_course, FPV_OT_language, FPV_OT_update_check, FPV_OT_update_install, FPV_OT_update_page, FPV_OT_tune_blender, FPV_OT_untune_blender, FPV_OT_look_apply, FPV_OT_look_remove, FPV_OT_physcam_bake, FPV_OT_target_from_curve, FPV_OT_target_from_take, FPV_OT_target_new, FPV_OT_optimize, FPV_OT_restore, FPV_OT_phone_link, FPV_OT_phone_copy, FPV_OT_ai_link, FPV_OT_ai_copy, FPV_OT_fly, FPV_OT_create_rig, FPV_OT_reset, FPV_OT_clear_take, FPV_OT_start_here, FPV_OT_preset,
            FPV_OT_monitor, FPV_OT_learn_axis)
 
 

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import bpy
-from . import inputs, phone, i18n, updater, refly, diagrams
+from . import inputs, phone, i18n, updater, refly, diagrams, ai
 from .i18n import T, CTX
 from .optimize import TILE_COLL
 
@@ -266,9 +266,7 @@ class FPV_PT_flight(_Sub, bpy.types.Panel):
                 translate=False)
         L.prop(s, "max_angle")
         L.separator()
-        sub = L.column()
-        sub.active = not s.use_specs
-        sub.prop(s, "thrust_to_weight")
+        L.prop(s, "thrust_to_weight")          # always editable: with Real Specs the motor thrust follows
         L.prop(s, "throttle_expo")
         L.prop(s, "use_gravity")
         L.separator()
@@ -617,6 +615,40 @@ class FPV_PT_phone(_Sub, bpy.types.Panel):
             _label(L, "Input is not Phone: the FLY button on the phone will switch it", 'ERROR')
 
 
+class FPV_PT_ai(_Sub, bpy.types.Panel):
+    bl_label = "AI Pilot (Claude)"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw_header(self, context):
+        self.layout.label(text="", icon='LIGHT' if ai.SERVER else 'LIGHT_SUN')
+
+    def draw(self, context):
+        s = context.scene.fpv
+        L = self.layout
+        srv = ai.SERVER
+        row = L.row()
+        row.scale_y = 1.3
+        row.operator("fpv.ai_link", text=T("Stop AI Link") if srv else T("Start AI Link"),
+                     icon='CANCEL' if srv else 'LIGHT', depress=srv is not None, translate=False)
+        if srv is None:
+            _label(L, "Claude flies the drone through the MCP server", 'INFO')
+            return
+        box = L.box()
+        if ai.connected():
+            box.label(text=T("Claude connected") + "  ·  %s" % ai.LINK.ap_status, icon='CHECKMARK', translate=False)
+        else:
+            _label(box, "Waiting for Claude...", 'TIME')
+        box.label(text="127.0.0.1:%d" % srv.port, icon='LOCKED', translate=False)
+        col = L.column(align=True)
+        _label(col, "Add the MCP server to Claude (once):")
+        row = col.row(align=True)
+        row.operator("fpv.ai_copy", text="Claude Code", icon='COPYDOWN').what = 'CODE'
+        row.operator("fpv.ai_copy", text="Claude Desktop", icon='COPYDOWN').what = 'DESKTOP'
+        _label(L, "Then ask Claude: 'fly my drone forward 20 m'", 'OUTLINER_DATA_SPEAKER')
+        if s.backend != 'AI':
+            _label(L, "Claude switches the input to AI when it starts a flight", 'INFO')
+
+
 class FPV_PT_about(_Sub, bpy.types.Panel):
     bl_label = "Language & Updates"
     bl_options = {'DEFAULT_CLOSED'}
@@ -637,7 +669,7 @@ class FPV_PT_about(_Sub, bpy.types.Panel):
             sub.prop(p, "auto_update")
 
 
-classes = (FPV_PT_main, FPV_PT_phone, FPV_PT_controller, FPV_PT_flight, FPV_PT_motion, FPV_PT_physcam, FPV_PT_look,
+classes = (FPV_PT_main, FPV_PT_phone, FPV_PT_ai, FPV_PT_controller, FPV_PT_flight, FPV_PT_motion, FPV_PT_physcam, FPV_PT_look,
            FPV_PT_specs, FPV_PT_realism, FPV_PT_world, FPV_PT_camera, FPV_PT_projectiles, FPV_PT_culling, FPV_PT_perf,
            FPV_PT_record, FPV_PT_about)
 
