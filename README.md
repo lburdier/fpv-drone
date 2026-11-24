@@ -41,13 +41,26 @@ Vue à travers la caméra FPV pendant un vol enregistré : mode et gaz, vitesse 
 
 ![OSD pendant le vol](docs/osd.png)
 
+## Nouveautés 2.17.1
+- Le logiciel s'appelle maintenant **FPV Drone Pilot** (anciennement TAKUMI FPV) et passe en 1.1.0. Les anciens fichiers restent lisibles.
+- **Interface au style Blender** (thème sombre, panneaux repliables) et **caméra fluide** : sticks filtrés, aucune secousse par défaut, image interpolée, *Stabilisation de la prise* façon Gyroflow.
+- **Scènes lourdes** (testé sur une ville de 53 km, 2,7 M triangles) :
+  - regroupement des objets fixes, qualité automatique, choix de la carte graphique ;
+  - toute la scène visible jusqu'à l'horizon ;
+  - caméras de départ prises à la première image du plan ;
+  - matériaux sans shader affichés avec leur couleur Blender.
+- Chaque prise sort aussi en **`.blend`** (caméra native, *Append*), en plus du `.abc` et du `.json`.
+
 ## Nouveautés 2.17
-- **TAKUMI FPV ouvre directement le `.blend`** : le logiciel lance Blender en arrière-plan pour exporter la scène (cache dans `TAKUMI_FPV/` à côté du fichier, refait seulement si le `.blend` change). L'échelle (mètres par unité) réglée dans l'addon est reprise, même sans l'addon installé chez le pilote.
+- **FPV Drone Pilot ouvre directement le `.blend`** : le logiciel lance Blender en arrière-plan pour exporter la scène (cache dans `FPV_PILOT/` à côté du fichier, refait seulement si le `.blend` change). L'échelle (mètres par unité) réglée dans l'addon est reprise, même sans l'addon installé chez le pilote.
 - **Alembic** : chaque prise peut aussi être écrite en `.abc` (caméra seule, une clé par image, même focale). Dans Blender : *Fichier › Importer › Alembic (.abc)*, ou *Importer une prise du logiciel* avec le `.json`. Les deux donnent exactement le même mouvement.
 - Le script `appbridge.py` se lance aussi en ligne de commande (`export-scene`, `take-to-abc`).
+- **Caméra fluide dans FPV Drone Pilot** : sticks filtrés comme le *RC smoothing* de Betaflight, aucune secousse aléatoire par défaut (réglage *Secousses* à 0), image interpolée entre les pas de physique à 500 Hz, et *Stabilisation de la prise* : rotation lissée sans retard, façon Gyroflow, le vol brut restant dans la prise. Mesuré à prise égale : accélération angulaire de la caméra ÷ 3,3, pour 6 ms de latence en plus seulement.
+- **Trois formats de retour pour chaque prise** : `.abc` (Alembic), `.blend` (caméra native, *Fichier › Ajouter (Append) › Object*) et `.json` (*Importer une prise du logiciel*).
+- Le logiciel s'appelle maintenant **FPV Drone Pilot** (anciennement TAKUMI FPV) ; ses anciens fichiers restent lisibles.
 
 ## Nouveautés 2.16
-- **Logiciel TAKUMI FPV** (pilote sans Blender) : *Exporter la scène pour le logiciel* écrit un `.glb` (objets, matériaux, animation de la scène ; textures réduites à 2048 px dans l'export seulement) et un `.json` (images, i/s, résolution, échelle, caméras de départ). Le pilote l'ouvre dans TAKUMI FPV, vole à la radio, et chaque prise est un `.json` (une position et une rotation par image, en coordonnées monde Blender). *Importer une prise du logiciel* en fait une caméra avec une clé par image.
+- **Logiciel FPV Drone Pilot** (pilote sans Blender) : *Exporter la scène pour le logiciel* écrit un `.glb` (objets, matériaux, animation de la scène ; textures réduites à 2048 px dans l'export seulement) et un `.json` (images, i/s, résolution, échelle, caméras de départ). Le pilote l'ouvre dans FPV Drone Pilot, vole à la radio, et chaque prise est un `.json` (une position et une rotation par image, en coordonnées monde Blender). *Importer une prise du logiciel* en fait une caméra avec une clé par image.
 - **Renvoyer la caméra du pilote** (panneau *Enregistrement*, en bas) : un pilote vole sur une copie de la scène, puis **Exporter la caméra** fige la caméra pilotée (une clé par image, en coordonnées monde, sans parent, même objectif) et l'enregistre seule dans un petit `.blend` de quelques Ko (par défaut à côté du fichier, au nom de la caméra, ex. `CAM_01_FPV.blend`). Dans le projet principal, **Importer la caméra du pilote** l'ajoute dans la collection *FPV_Cameras*, exactement là où elle a volé, et peut en faire la caméra de la scène. Sans l'addon : *Fichier › Ajouter (Append) › CAM_01_FPV.blend › Object*.
 
 ## Nouveautés 2.15

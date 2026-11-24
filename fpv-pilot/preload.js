@@ -3,7 +3,7 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 const call = (ch) => (...a) => ipcRenderer.invoke(ch, ...a);
 contextBridge.exposeInMainWorld('host', {
   args: call('app:args'), version: call('app:version'), quit: call('app:quit'), capture: call('app:capture'),
-  fullscreen: call('app:fullscreen'),
+  fullscreen: call('app:fullscreen'), gpu: call('app:gpu'), restart: call('app:restart'),
   pickScene: call('scene:pick'), loadScene: call('scene:load'),
   saveTake: call('take:save'), listTakes: call('take:list'), readTake: call('take:read'), deleteTake: call('take:delete'),
   exportTakeAs: call('take:exportAs'), show: call('shell:show'),

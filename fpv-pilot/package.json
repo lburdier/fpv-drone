@@ -1,7 +1,7 @@
 {
-  "name": "takumi-fpv",
-  "productName": "TAKUMI FPV",
-  "version": "1.0.0",
+  "name": "fpv-pilot",
+  "productName": "FPV Drone Pilot",
+  "version": "1.1.0",
   "description": "Simulateur FPV autonome : vole dans une scène Blender exportée et renvoie la caméra à Blender",
   "main": "main.js",
   "author": "Lucas",
@@ -9,8 +9,8 @@
   "scripts": {
     "build": "npm run bridge && esbuild src/app.js --bundle --format=esm --target=chrome120 --outfile=dist/app.js",
     "start": "npm run build && electron .",
-    "package": "npm run build && electron-packager . \"TAKUMI FPV\" --platform=win32 --arch=x64 --out=out --overwrite --asar --ignore=^/src --ignore=^/out --ignore=^/test",
-    "bridge": "node -e \"require('fs').mkdirSync('blender',{recursive:true});require('fs').copyFileSync('../appbridge.py','blender/takumi_bridge.py')\""
+    "package": "npm run build && electron-packager . \"FPV Drone Pilot\" --platform=win32 --arch=x64 --out=out --overwrite --asar --ignore=^/src --ignore=^/out --ignore=^/test",
+    "bridge": "node -e \"require('fs').mkdirSync('blender',{recursive:true});require('fs').copyFileSync('../appbridge.py','blender/fpv_pilot_bridge.py')\""
   },
   "devDependencies": {
     "@electron/packager": "^20.3.0",

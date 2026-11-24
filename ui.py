@@ -555,7 +555,7 @@ class FPV_PT_record(_Sub, bpy.types.Panel):
 
 
 def draw_handoff_box(box, s):
-    _label(box, "TAKUMI FPV app (pilot without Blender)", 'DESKTOP')
+    _label(box, "FPV Drone Pilot app (pilot without Blender)", 'DESKTOP')
     row = box.row(align=True)
     row.operator("fpv.app_export_scene", text=T("Export Scene for the App"), icon='EXPORT', translate=False)
     row = box.row(align=True)

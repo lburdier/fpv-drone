@@ -162,9 +162,12 @@ export class Drone {
       const l = dw.length();
       if (l > amax) dw.multiplyScalar(amax / l);
       this.w.addScaledVector(dw, dt);
-      if (p.turbulence > 0 || this.wash > 0) {
+      // vibrations (wind, prop-wash buffeting): only with "Secousses" > 0. At 0 the flight keeps all its inertia,
+      // motor lag and drag (the feel of a real quad) without any random shake.
+      if (p.turbulence > 0) {
         const n = new Vector3(this.turb[0].step(dt), this.turb[1].step(dt), this.turb[2].step(dt)).multiplyScalar(p.turbulence * 1.6);
-        n.add(new Vector3(this.washN[0].step(dt), this.washN[1].step(dt), this.washN[2].step(dt) * 0.25).multiplyScalar(this.wash * 9));
+        n.add(new Vector3(this.washN[0].step(dt), this.washN[1].step(dt), this.washN[2].step(dt) * 0.25)
+          .multiplyScalar(this.wash * 9 * Math.min(1, p.turbulence * 2)));
         this.w.addScaledVector(n, dt * 10);
       }
     } else {
@@ -208,12 +211,37 @@ export class Drone {
       this.vel.addScaledVector(n, -vn * (1 + bounce));
       const vt = this.vel.clone().addScaledVector(n, -this.vel.dot(n));
       this.vel.addScaledVector(vt, -Math.min(1, friction));
-      this.w.multiplyScalar(0.5);
-      this.w.x += (Math.random() - 0.5) * Math.min(20, speed * 2);
-      this.w.y += (Math.random() - 0.5) * Math.min(20, speed * 2);
+      this.w.multiplyScalar(0.5);                  // contact: rotation damped, no random kick (no camera jolt)
       this.impact = Math.min(1, this.impact + speed / 6);
       return speed;
     }
     return 0;
   }
+}
+
+/** Radio smoothing between the display rate (sticks read once per image) and the 500 Hz physics:
+ *  the sticks are ramped between two readings (first-order hold), then low-passed by a 2nd order filter
+ *  (two PT1 in series, like Betaflight's RC smoothing). cutoffHz() gives the cut-off in Hz. */
+const RC_KEYS = ['throttle', 'yaw', 'pitch', 'roll'];
+export class StickFilter {
+  constructor(cutoffHz) { this.cutoffHz = cutoffHz; this.reset(null); }
+  cutoff() { return this.cutoffHz(); }
+  reset(s) {
+    this.prev = s ? { ...s } : null; this.a = {}; this.b = {};
+    for (const k of RC_KEYS) { this.a[k] = s ? s[k] : 0; this.b[k] = this.a[k]; }
+  }
+  /** Sticks at fraction u (0..1) of the current display interval, filtered over one physics step dt. */
+  step(cur, u, dt) {
+    if (!this.prev) this.reset(cur);
+    const k = 1 - Math.exp(-2 * Math.PI * this.cutoff() * Math.SQRT2 * dt);
+    const out = { arm: cur.arm, source: cur.source };
+    for (const key of RC_KEYS) {
+      const x = this.prev[key] + (cur[key] - this.prev[key]) * u;
+      this.a[key] += (x - this.a[key]) * k;
+      this.b[key] += (this.a[key] - this.b[key]) * k;
+      out[key] = this.b[key];
+    }
+    return out;
+  }
+  end(cur) { this.prev = { ...cur }; }
 }

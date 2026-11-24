@@ -355,7 +355,7 @@ class FPV_OT_import_camera(_Op, bpy.types.Operator):
 
 
 class FPV_OT_app_export_scene(_Op, bpy.types.Operator):
-    """Export this scene for the TAKUMI FPV app: a .glb (meshes, materials, animation) and a .json (frame range, fps, scale, start cameras). The pilot opens the .json in the app, no Blender needed"""
+    """Export this scene for the FPV Drone Pilot app: a .glb (meshes, materials, animation) and a .json (frame range, fps, scale, start cameras). The pilot opens the .json in the app, no Blender needed"""
     bl_idname = "fpv.app_export_scene"
     bl_label = "Export Scene for the App"
 
@@ -368,7 +368,7 @@ class FPV_OT_app_export_scene(_Op, bpy.types.Operator):
         if not self.filepath:
             base = bpy.path.abspath("//") or os.path.expanduser("~")
             name = bpy.path.display_name_from_filepath(bpy.data.filepath) or "scene"
-            self.filepath = os.path.join(base, "TAKUMI_FPV_" + name, name + ".glb")
+            self.filepath = os.path.join(base, "FPV_PILOT_" + name, name + ".glb")
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
@@ -383,7 +383,7 @@ class FPV_OT_app_export_scene(_Op, bpy.types.Operator):
 
 
 class FPV_OT_app_import_take(_Op, bpy.types.Operator):
-    """Import a take flown in the TAKUMI FPV app (.json): a camera with one key per frame, at the exact place it was flown"""
+    """Import a take flown in the FPV Drone Pilot app (.json): a camera with one key per frame, at the exact place it was flown"""
     bl_idname = "fpv.app_import_take"
     bl_label = "Import App Take"
     bl_options = {'REGISTER', 'UNDO'}

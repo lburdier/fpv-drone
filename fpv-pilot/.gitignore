@@ -1,0 +1,4 @@
+node_modules/
+dist/
+out/
+blender/fpv_pilot_bridge.py

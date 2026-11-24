@@ -2,13 +2,13 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<title>TAKUMI FPV</title>
+<title>FPV Drone Pilot</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div id="app">
   <aside id="panel">
-    <header class="brand"><span class="logo">TAKUMI</span><span class="sub">FPV</span><span id="ver"></span></header>
+    <header class="brand"><span class="logo"><i class="dot"></i>FPV Drone <b>Pilot</b></span><span id="ver"></span></header>
 
     <section>
       <h2>Scène</h2>
@@ -43,8 +43,10 @@
       </div>
       <div id="rateInfo" class="muted small"></div>
       <label>Expo des gaz <input id="throttleExpo" type="range" min="0" max="1" step="0.05"><span class="val" data-for="throttleExpo"></span></label>
-      <label>Turbulence <input id="turbulence" type="range" min="0" max="1" step="0.05"><span class="val" data-for="turbulence"></span></label>
-      <label class="check"><input id="realism" type="checkbox"> Physique réaliste (moteurs, prop-wash, traînée)</label>
+      <label>Lissage des sticks <input id="rcSmooth" type="range" min="0" max="1" step="0.05"><span class="val" data-for="rcSmooth"></span></label>
+      <div class="muted small note">Filtre radio (comme le RC smoothing de Betaflight) : enlève les à-coups des sticks sans retarder la réponse.</div>
+      <label>Secousses (vent, prop-wash) <input id="turbulence" type="range" min="0" max="1" step="0.05"><span class="val" data-for="turbulence"></span></label>
+      <label class="check"><input id="realism" type="checkbox"> Physique réaliste (inertie, moteurs, traînée)</label>
       <label class="check"><input id="collisions" type="checkbox"> Collisions avec la scène</label>
     </section>
 
@@ -54,8 +56,12 @@
       <div id="lensInfo" class="muted small"></div>
       <label>Uptilt <input id="camTilt" type="range" min="-10" max="60" step="1"><span class="val" data-for="camTilt"></span></label>
       <label>Verrouillage d'horizon <input id="horizonLock" type="range" min="0" max="1" step="0.05"><span class="val" data-for="horizonLock"></span></label>
+      <label>Stabilisation de la prise <input id="camSmooth" type="range" min="0" max="1" step="0.05"><span class="val" data-for="camSmooth"></span></label>
+      <div class="muted small note">Lisse la rotation de la caméra enregistrée, sans retard (comme Gyroflow). Le vol brut reste dans la prise.</div>
       <label>Luminosité de l'aperçu <input id="exposure" type="range" min="0.3" max="3" step="0.05"><span class="val" data-for="exposure"></span></label>
-      <label>Qualité d'affichage <select id="quality"><option value="1">Normale</option><option value="0.75">Rapide</option><option value="0.5">Très rapide</option><option value="1.5">Haute</option></select></label>
+      <label>Carte graphique <select id="gpuSel"><option value="display">Celle de l'écran (conseillé sur portable)</option><option value="dedicated">Dédiée (NVIDIA / AMD)</option></select></label>
+      <div id="gpuInfo" class="muted small note"></div>
+      <label>Qualité d'affichage <select id="quality"><option value="auto">Auto (garde 60 i/s)</option><option value="1">Normale</option><option value="0.75">Rapide</option><option value="0.5">Très rapide</option><option value="1.5">Haute</option></select></label>
     </section>
 
     <section>
@@ -104,7 +110,7 @@
         <canvas id="sticks" width="220" height="100"></canvas>
       </div>
       <div id="loading" class="hidden"><div class="spin"></div><div id="loadingText">Chargement…</div></div>
-      <div id="drop" class="hidden">Dépose la scène (.json ou .glb)</div>
+      <div id="drop" class="hidden">Dépose le .blend (ou une scène .json / .glb, ou une prise .json)</div>
     </div>
   </main>
 </div>

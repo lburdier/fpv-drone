@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// TAKUMI FPV - renderer: scene, flight loop, recording, takes, UI.
+// FPV Drone Pilot - renderer: scene, flight loop, recording, takes, UI.
 //
 // Axes: the drone, the takes and the scene .json are in BLENDER world axes (+Z up). The .glb is Y-up (three.js):
 //   Blender (x, y, z) -> three (x, z, -y)          b2t
@@ -10,8 +10,9 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from 'three-mesh-bvh';
-import { CLASSES, Drone, makeParams, betaflightRate } from './flight.js';
+import { CLASSES, Drone, makeParams, betaflightRate, StickFilter } from './flight.js';
 import { Input, CHANNELS, CHANNEL_LABELS, saveMap, resetMap } from './input.js';
 
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
@@ -31,17 +32,18 @@ const H = 1 / PHYS_HZ;
 
 // ------------------------------------------------------------------ settings
 const DEFAULTS = {
-  droneClass: 'WHOOP', flightMode: 'ACRO', rcRate: 0.8, superRate: 0.55, expo: 0.2, throttleExpo: 0.3, turbulence: 0.15,
-  realism: true, collisions: true, hfov: 90, camTilt: 12, horizonLock: 0, exposure: 1, quality: '1',
+  droneClass: 'WHOOP', flightMode: 'ACRO', rcRate: 0.8, superRate: 0.55, expo: 0.2, throttleExpo: 0.3, turbulence: 0,
+  rcSmooth: 0.35, camSmooth: 0.35,
+  realism: true, collisions: true, hfov: 90, camTilt: 12, horizonLock: 0, exposure: 1, quality: 'auto',
   camName: 'CAM_01_FPV', timeScale: '1', countdown: '3', autoStop: true, autoAbc: true, blenderPath: '',
 };
 let settings = { ...DEFAULTS };
-try { settings = { ...DEFAULTS, ...JSON.parse(localStorage.getItem('takumi.settings') || '{}') }; } catch (e) { /* defaults */ }
-const saveSettings = () => localStorage.setItem('takumi.settings', JSON.stringify(settings));
+try { settings = { ...DEFAULTS, ...JSON.parse(localStorage.getItem('fpvpilot.settings') || '{}') }; } catch (e) { /* defaults */ }
+const saveSettings = () => localStorage.setItem('fpvpilot.settings', JSON.stringify(settings));
 
 // per scene: scale, frame range, start point
 let sceneCfg = {};
-const sceneKey = () => 'takumi.scene.' + (S.info?.name || 'x');
+const sceneKey = () => 'fpvpilot.scene.' + (S.info?.name || 'x');
 const saveSceneCfg = () => localStorage.setItem(sceneKey(), JSON.stringify(sceneCfg));
 
 // ------------------------------------------------------------------ state
@@ -58,11 +60,20 @@ const input = new Input();
 
 // ------------------------------------------------------------------ three
 const canvas = $('view');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: false,
+  reversedDepthBuffer: true });   // depth precision from 2 cm to tens of km (large scenes, no z-fighting)
 renderer.toneMapping = THREE.AgXToneMapping;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+// GPU in use (shown in the Blender section, written by the self test) and context loss (driver reset, GPU memory full)
+const gpuName = (() => { try { const gl = renderer.getContext(); const x = gl.getExtension('WEBGL_debug_renderer_info');
+  return x ? gl.getParameter(x.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER); } catch (e) { return '?'; } })();
+canvas.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault(); S.ctxLost = (S.ctxLost || 0) + 1; S.errors.push('WebGL context lost (t=' + Math.round(performance.now()) + ' ms)');
+  toast('La carte graphique a été réinitialisée : la vue revient dans un instant.', true, 6000);
+});
+canvas.addEventListener('webglcontextrestored', () => { S.errors.push('WebGL context restored'); if (S.jsonPath || S.glbPath) openPath(S.jsonPath || S.glbPath); });
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x1b1d21);
+scene.background = new THREE.Color(0x303030);   // Blender viewport grey
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environmentIntensity = 0.9;
@@ -84,6 +95,7 @@ function toast(text, err = false, ms = 3500) {
 }
 function loading(text) {
   $('loading').classList.toggle('hidden', !text);
+  $('osd').classList.toggle('hidden', !!text);   // no OSD text under the progress message
   if (text) $('loadingText').textContent = text;
 }
 const tick0 = () => new Promise((r) => setTimeout(r, 0));
@@ -130,7 +142,131 @@ function applyCamBlender(posB, qB) {
   camera.updateMatrixWorld();
 }
 
+// ------------------------------------------------------------------ static batching (heavy scenes)
+// A Blender scene can hold thousands of objects: one draw call each is what makes the view stutter, not the triangles.
+// Objects that never move (not animated, not under an animated parent, not skinned / morphing) are regrouped:
+//  - the same mesh repeated many times (linked duplicates, scattered props) -> one InstancedMesh per mesh + material;
+//  - the other static meshes -> merged per material and per zone of the scene (so the zones stay culled off screen).
+// Collisions keep working: every instance / merged mesh gets its own collider.
+/** Blender's glTF export bakes every action over the whole range: objects that do not move in the shot still get
+ *  one key per frame. Constant tracks are applied once to the object and dropped, so those objects become static. */
+function pruneConstantTracks(rootObj, clips) {
+  let dropped = 0, kept = 0;
+  for (const clip of clips) {
+    clip.tracks = clip.tracks.filter((tr) => {
+      const v = tr.values, n = v.length / tr.times.length;
+      let constant = true;
+      for (let i = n; i < v.length && constant; i++) if (Math.abs(v[i] - v[i % n]) > 1e-6) constant = false;
+      if (!constant) { kept++; return true; }
+      const pb = THREE.PropertyBinding.parseTrackName(tr.name);
+      const node = rootObj.getObjectByName(pb.nodeName) || rootObj.getObjectByProperty('uuid', pb.nodeName);
+      const prop = pb.propertyName;
+      if (!node || !['position', 'quaternion', 'scale'].includes(prop)) { kept++; return true; }
+      node[prop].fromArray(v, 0);
+      dropped++;
+      return false;
+    });
+  }
+  return { dropped, kept };
+}
+function animatedNodes(rootObj, clips) {
+  const dyn = new Set();
+  for (const clip of clips) {
+    for (const tr of clip.tracks) {
+      const name = THREE.PropertyBinding.parseTrackName(tr.name).nodeName;
+      const node = rootObj.getObjectByName(name) || rootObj.getObjectByProperty('uuid', name);
+      if (node) node.traverse((o) => dyn.add(o));
+    }
+  }
+  return dyn;
+}
+function geoKey(g) {
+  const a = Object.keys(g.attributes).sort().map((k) => { const x = g.attributes[k]; return k + x.itemSize + (x.normalized ? 'n' : '') + x.array.constructor.name; });
+  return (g.index ? 'i' : 'n') + a.join(',') + (Object.keys(g.morphAttributes).length ? 'm' : '');
+}
+async function batchStatic(rootObj, clips, progress) {
+  rootObj.updateMatrixWorld(true);
+  const dyn = animatedNodes(rootObj, clips);
+  const statics = [];
+  rootObj.traverse((o) => {
+    if (o.isMesh && !o.isSkinnedMesh && !o.isInstancedMesh && !dyn.has(o) && !Array.isArray(o.material)
+      && !Object.keys(o.geometry.morphAttributes).length && !o.morphTargetInfluences?.length && o.visible) statics.push(o);
+  });
+  const before = statics.length;
+  if (before < 64) return { before, after: before, instanced: 0, merged: 0, dyn: dyn.size };
+  const box = new THREE.Box3().setFromObject(rootObj), size = box.getSize(new THREE.Vector3());
+  const cell = Math.max(size.x, size.y, size.z) / 6 || 1;
+  const group = new THREE.Group(); group.name = '__static_batches';
+  // 1. repeated meshes -> instancing
+  const byGeoMat = new Map();
+  for (const o of statics) { const k = o.geometry.uuid + '|' + o.material.uuid; (byGeoMat.get(k) || byGeoMat.set(k, []).get(k)).push(o); }
+  const rest = []; let instanced = 0, n = 0;
+  for (const list of byGeoMat.values()) {
+    if (list.length < 4) { rest.push(...list); continue; }
+    const im = new THREE.InstancedMesh(list[0].geometry, list[0].material, list.length);
+    list.forEach((o, i) => im.setMatrixAt(i, o.matrixWorld));
+    im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere();
+    im.userData.instances = list.map((o) => o.matrixWorld.clone());
+    group.add(im); instanced++;
+    for (const o of list) o.parent.remove(o);
+    if (++n % 50 === 0) { progress(n); await tick0(); }
+  }
+  // 2. other static meshes -> merged per material + zone, in world space
+  const buckets = new Map(), c = new THREE.Vector3();
+  for (const o of rest) {
+    if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+    c.copy(o.geometry.boundingSphere.center).applyMatrix4(o.matrixWorld).sub(box.min).divideScalar(cell).floor();
+    const k = o.material.uuid + '|' + geoKey(o.geometry) + '|' + c.x + ',' + c.y + ',' + c.z;
+    (buckets.get(k) || buckets.set(k, []).get(k)).push(o);
+  }
+  let merged = 0;
+  const used = new Map();   // geometries still used elsewhere are not disposed
+  rootObj.traverse((o) => { if (o.isMesh) used.set(o.geometry, (used.get(o.geometry) || 0) + 1); });
+  for (const list of buckets.values()) {
+    if (list.length < 2) continue;
+    const geos = list.map((o) => {
+      const g = o.geometry.clone().applyMatrix4(o.matrixWorld);
+      if (o.matrixWorld.determinant() < 0 && g.index) {       // mirrored object: keep the faces' winding
+        const ix = g.index.array; for (let i = 0; i < ix.length; i += 3) { const t = ix[i]; ix[i] = ix[i + 2]; ix[i + 2] = t; }
+      }
+      return g;
+    });
+    const mg = mergeGeometries(geos, false);
+    geos.forEach((g) => g.dispose());
+    if (!mg) continue;
+    const m = new THREE.Mesh(mg, list[0].material); m.name = 'merged_' + list[0].material.name;
+    group.add(m); merged++;
+    for (const o of list) {
+      o.parent.remove(o);
+      const u = used.get(o.geometry) - 1; used.set(o.geometry, u);
+      if (u <= 0) o.geometry.dispose();
+    }
+    if (++n % 50 === 0) { progress(n); await tick0(); }
+  }
+  rootObj.add(group);
+  rootObj.updateMatrixWorld(true);
+  // what does not move is not recomputed every frame (thousands of objects = milliseconds per frame)
+  rootObj.traverse((o) => { if (!dyn.has(o)) { o.matrixAutoUpdate = false; } });
+  scene.matrixAutoUpdate = false;   // otherwise the scene / root update forces every child matrix again
+  let after = 0; rootObj.traverse((o) => { if (o.isMesh) after++; });
+  return { before, after, instanced, merged, dyn: dyn.size };
+}
+
 // ------------------------------------------------------------------ layout
+// Display quality: a fixed scale, or "auto": the resolution follows the frame time to stay fluid (60 fps target)
+const perf = { scale: 1, acc: 0, n: 0, t: 0, log: null };
+function qualityScale() { return settings.quality === 'auto' ? perf.scale : Number(settings.quality) || 1; }
+function perfTick(dt) {
+  if (perf.log) perf.log.push(dt);
+  if (settings.quality !== 'auto') return;
+  perf.acc += dt; perf.n++; perf.t += dt;
+  if (perf.t < 0.75) return;
+  const avg = perf.acc / perf.n; perf.acc = 0; perf.n = 0; perf.t = 0;
+  let s = perf.scale;
+  if (avg > 1 / 50) s = Math.max(0.4, s * 0.85);          // below 50 fps: fewer pixels
+  else if (avg < 1 / 58 && s < 1) s = Math.min(1, s * 1.1); // smooth again: back up
+  if (Math.abs(s - perf.scale) > 1e-3) { perf.scale = s; layout(); }
+}
 function layout() {
   const st = $('stage').getBoundingClientRect();
   const a = aspect();
@@ -138,7 +274,7 @@ function layout() {
   if (h > st.height) { h = st.height; w = h * a; }
   w = Math.max(64, Math.floor(w)); h = Math.max(36, Math.floor(h));
   $('frame').style.width = w + 'px'; $('frame').style.height = h + 'px';
-  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1) * Number(settings.quality));
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1) * qualityScale());
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
@@ -188,12 +324,23 @@ async function loadScene(p) {
   S.fps = info.fps || 24; S.res = info.resolution || [1920, 1080];
 
   // animation: one action per clip, driven by time = frame / fps (Blender frame 0 = t 0)
+  S.tracks = pruneConstantTracks(root, gltf.animations);
+  gltf.animations = gltf.animations.filter((c) => c.tracks.length);
   mixer = new THREE.AnimationMixer(root);
-  actions = gltf.animations.map((clip) => {
+  // many clips (one per animated object in some exports) -> a single clip: same keys, one action to evaluate per frame
+  const clips = gltf.animations.length > 1
+    ? [new THREE.AnimationClip('scene', -1, gltf.animations.flatMap((c) => c.tracks))] : gltf.animations;
+  S.clipCount = gltf.animations.length;
+  actions = clips.map((clip) => {
     const a = mixer.clipAction(clip);
     a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; a.play();
     return a;
   });
+
+  // heavy scenes: regroup what never moves (fewer draw calls = fluid view)
+  loading('Optimisation de l\'affichage…');
+  await tick0();
+  S.batch = await batchStatic(root, gltf.animations, (k) => loading('Optimisation de l\'affichage… ' + k));
 
   // collisions: a BVH per static mesh (skinned meshes are drawn but not collided)
   colliders = [];
@@ -210,25 +357,31 @@ async function loadScene(p) {
       tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
       if (++n % 10 === 0) { loading('Préparation des collisions… ' + n + ' / ' + meshes.length); await tick0(); }
     }
-    colliders.push({ mesh: o, inv: new THREE.Matrix4(), c: new THREE.Vector3(), r: 0, minS: 1 });
+    if (o.isInstancedMesh) {      // one collider per instance (same BVH, its own matrix)
+      for (const mw of o.userData.instances) colliders.push({ mesh: { geometry: g, matrixWorld: mw, visible: true }, inv: new THREE.Matrix4(), c: new THREE.Vector3(), r: 0, minS: 1 });
+    } else colliders.push({ mesh: o, inv: new THREE.Matrix4(), c: new THREE.Vector3(), r: 0, minS: 1 });
   }
   root.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(root);
   const sz = box.getSize(new THREE.Vector3());
   S.sceneSize = Math.max(sz.x, sz.y, sz.z) || 10;
   S.groundZ = box.min.y;                   // Blender z of the lowest point (hard floor)
-  S.stats = { meshes: meshes.length, tris: Math.round(tris), clips: actions.length };
+  S.stats = { meshes: S.batch.before + (meshes.length - S.batch.after), tris: Math.round(tris), clips: S.clipCount,
+    drawCalls: meshes.length, batch: S.batch };
 
   // per-scene settings
   try { sceneCfg = JSON.parse(localStorage.getItem(sceneKey()) || '{}'); } catch (e) { sceneCfg = {}; }
   sceneCfg = { mpu: info.meters_per_unit || 1, recStart: info.frame_start ?? 1, recEnd: info.frame_end ?? 250,
     start: 0, custom: null, ...sceneCfg };
   if (!info.cameras?.length && !sceneCfg.custom) sceneCfg.start = 'cursor';
-  $('sceneName').innerHTML = '<b>' + esc(info.name) + '</b><br><span class="small">' + S.stats.meshes + ' objets · '
+  // clipping: 2 cm in front of the lens, and the whole scene visible (a city can be tens of km wide)
+  camera.near = 0.02 / mpu(); camera.far = Math.max(1000 / mpu(), S.sceneSize * 3); camera.updateProjectionMatrix();
+  $('sceneName').innerHTML = '<b>' + esc(info.name) + '</b><br><span class="small">' + S.stats.meshes + ' objets'
+    + (S.batch.after < S.batch.before ? ' (affichés en ' + S.stats.drawCalls + ' lots)' : '') + ' · '
     + (S.stats.tris / 1000).toFixed(0) + ' k triangles · ' + S.fps + ' i/s · images ' + info.frame_start + '–' + info.frame_end
     + ' · ' + S.res[0] + '×' + S.res[1] + (actions.length ? '' : ' · <span style="color:var(--warn)">pas d\'animation</span>') + '</span>';
   $('btnReexport').disabled = !S.blendPath;
-  document.title = 'TAKUMI FPV — ' + info.name;
+  document.title = 'FPV Drone Pilot — ' + info.name;
   fillStartSel();
   syncSceneFields();
   layout();
@@ -241,13 +394,17 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 function setSceneFrame(f) {
   S.frame = f;
   if (!mixer) return;
+  const a0 = perf.ph ? performance.now() : 0;
+  try { setSceneFrameInner(f); } finally { if (perf.ph) perf.ph.anim += performance.now() - a0; }
+}
+function setSceneFrameInner(f) {
   const t = f / S.fps;
   for (const a of actions) {
     a.enabled = true; a.paused = false;
     a.time = Math.max(0, Math.min(t, a.getClip().duration));
   }
   mixer.update(0);
-  root.updateMatrixWorld(true);
+  root.updateMatrixWorld();
 }
 
 // ------------------------------------------------------------------ start point
@@ -336,6 +493,7 @@ function beginRun(training) {
   S.floorZ = S.groundZ;
   P.floorZ = hit ? t2b(hit.point).z : S.groundZ;
   S.t = 0; S.acc = 0; S.samples = []; S.nextSample = 0; S.topSpeed = 0; S.hitT = 0;
+  prevPos.copy(drone.pos); prevQ.copy(drone.q); sticks.reset(null);
   setSceneFrame(Number(sceneCfg.recStart));
   setHfov(Number(settings.hfov));
   applyCamBlender(drone.pos, camQuat(drone.q));
@@ -355,6 +513,7 @@ function release(s) {
   drone.motor = shapedThrottle(s.throttle);   // no motor spin-up dip when the pilot takes over
   S.recording = !S.training;
   S.t = 0; S.acc = 0; S.nextSample = 0;
+  prevPos.copy(drone.pos); prevQ.copy(drone.q); sticks.reset(s);
 }
 
 function stopRun() {
@@ -366,6 +525,41 @@ function stopRun() {
 }
 
 function restartRun() { const tr = S.training; S.recording = false; beginRun(tr); }
+
+// ------------------------------------------------------------------ smoothness
+// 1. Sticks: the radio is read once per displayed image (60-240 Hz) but the physics runs at 500 Hz. The sticks are
+//    ramped between two readings (no stair steps) then go through a 2nd order low-pass, like Betaflight's
+//    RC smoothing. "Lissage des sticks" sets its cut-off: 0 = 80 Hz (raw), 1 = 10 Hz (very soft).
+// 2. Display: the view is interpolated between the last two physics steps, so every image shows the drone at the
+//    exact display time (no micro-stutter).
+// 3. Take: "Stabilisation de la prise" smooths the recorded camera rotation without lag (centred Gaussian, like a
+//    gimbal / Gyroflow). The raw flight is kept in the take (frames_raw).
+const sticks = new StickFilter(() => {
+  const x = Math.max(0, Math.min(1, Number(settings.rcSmooth) || 0)); return 80 * Math.pow(10 / 80, x);   // 80 Hz .. 10 Hz
+});
+
+/** Centred Gaussian smoothing of the camera rotation (and a little of the position) of a take, no lag. */
+function smoothTake(samples, amount) {
+  const sig = Math.max(0, Math.min(1, amount)) * 0.30 * S.fps;           // up to 0.3 s of smoothing
+  if (sig < 0.3 || samples.length < 3) return samples;
+  const sigP = sig * 0.25;
+  const n = samples.length, R = Math.ceil(sig * 3);
+  const q = samples.map((x) => new THREE.Quaternion(x.q[1], x.q[2], x.q[3], x.q[0]));
+  for (let i = 1; i < n; i++) if (q[i].dot(q[i - 1]) < 0) q[i].set(-q[i].x, -q[i].y, -q[i].z, -q[i].w);
+  const r6 = (v) => Math.round(v * 1e6) / 1e6;
+  return samples.map((smp, i) => {
+    let wq = 0, wp = 0; const acc = [0, 0, 0, 0], pa = [0, 0, 0];
+    // near the ends the window shrinks symmetrically: the first and last images stay exactly where they were flown
+    const r = Math.min(R, i, n - 1 - i);
+    for (let j = i - r; j <= i + r; j++) {
+      const d = j - i, w = Math.exp(-0.5 * (d / sig) ** 2), w2 = sigP > 0.05 ? Math.exp(-0.5 * (d / sigP) ** 2) : (d === 0 ? 1 : 0);
+      acc[0] += q[j].x * w; acc[1] += q[j].y * w; acc[2] += q[j].z * w; acc[3] += q[j].w * w; wq += w;
+      pa[0] += samples[j].p[0] * w2; pa[1] += samples[j].p[1] * w2; pa[2] += samples[j].p[2] * w2; wp += w2;
+    }
+    const qs = new THREE.Quaternion(acc[0], acc[1], acc[2], acc[3]).normalize();
+    return { f: smp.f, p: pa.map((v) => r6(v / wp)), q: [r6(qs.w), r6(qs.x), r6(qs.y), r6(qs.z)] };
+  });
+}
 
 // ------------------------------------------------------------------ simulation
 const _pt = new THREE.Vector3(), _lp = new THREE.Vector3(), _wp = new THREE.Vector3(), _n = new THREE.Vector3();
@@ -381,14 +575,17 @@ function broadphase(dtSim) {
   for (const c of colliders) {
     const m = c.mesh;
     if (!m.visible) continue;
-    const bs = m.geometry.boundingSphere;
-    c.c.copy(bs.center).applyMatrix4(m.matrixWorld);
-    m.matrixWorld.decompose(_wp, _q0, _sc);
-    const maxS = Math.max(Math.abs(_sc.x), Math.abs(_sc.y), Math.abs(_sc.z));
-    c.r = bs.radius * maxS;
+    const fixed = m.matrixAutoUpdate === false || !m.isObject3D;     // static: sphere and inverse computed once
+    if (!fixed || !c.sph) {
+      const bs = m.geometry.boundingSphere;
+      c.c.copy(bs.center).applyMatrix4(m.matrixWorld);
+      m.matrixWorld.decompose(_wp, _q0, _sc);
+      c.r = bs.radius * Math.max(Math.abs(_sc.x), Math.abs(_sc.y), Math.abs(_sc.z));
+      c.minS = Math.max(1e-6, Math.min(Math.abs(_sc.x), Math.abs(_sc.y), Math.abs(_sc.z)));
+      c.ready = false; c.sph = fixed;
+    }
     if (c.c.distanceTo(_pt) > c.r + margin) continue;
-    c.minS = Math.max(1e-6, Math.min(Math.abs(_sc.x), Math.abs(_sc.y), Math.abs(_sc.z)));
-    c.inv.copy(m.matrixWorld).invert();
+    if (!c.ready) { c.inv.copy(m.matrixWorld).invert(); c.ready = fixed; }
     out.push(c);
   }
   return out;
@@ -419,16 +616,19 @@ function pushSample(f, pos, q) {
   S.samples.push({ f, p: [r6(pos.x), r6(pos.y), r6(pos.z)], q: [r6(cq.w), r6(cq.x), r6(cq.y), r6(cq.z)] });
 }
 
+const prevPos = new THREE.Vector3(), prevQ = new THREE.Quaternion(), ip = new THREE.Vector3(), iq = new THREE.Quaternion();
+const _dp = new THREE.Vector3(), _dq = new THREE.Quaternion();
 function simulate(dtSim, s) {
   const cand = broadphase(dtSim);
+  const acc0 = S.acc;
   S.acc += dtSim;
   let steps = 0;
-  const prevPos = new THREE.Vector3(), prevQ = new THREE.Quaternion(), ip = new THREE.Vector3(), iq = new THREE.Quaternion();
   while (S.acc >= H && steps < PHYS_HZ) {
     S.acc -= H; steps++;
     prevPos.copy(drone.pos); prevQ.copy(drone.q);
     const tPrev = S.t;
-    drone.step(s.throttle, s.yaw, s.pitch, s.roll, P, H);
+    const st = sticks.step(s, Math.min(1, (steps * H - acc0) / Math.max(1e-6, dtSim)), H);
+    drone.step(st.throttle, st.yaw, st.pitch, st.roll, P, H);
     if (cand.length) { const hit = collide(cand); if (hit > 1.5) S.hitT = 0.6; }
     if (S.floorZ !== null) drone.collideFloor(S.floorZ, 0.2, H);
     S.t += H;
@@ -443,15 +643,20 @@ function simulate(dtSim, s) {
       }
     }
   }
+  sticks.end(s);
   S.topSpeed = Math.max(S.topSpeed, drone.speedMs(P) * 3.6);
+  // display: between the last two physics steps, at the exact display time
+  const alpha = Math.max(0, Math.min(1, S.acc / H));
+  _dp.lerpVectors(prevPos, drone.pos, alpha); _dq.slerpQuaternions(prevQ, drone.q, alpha);
+  const tShow = Math.max(0, S.t - H + alpha * H);
   // scene time follows the flight time
-  let f = Number(sceneCfg.recStart) + S.t * S.fps;
+  let f = Number(sceneCfg.recStart) + tShow * S.fps;
   if (S.training || S.mode === 'DONE') {
     const len = Math.max(1, Number(sceneCfg.recEnd) - Number(sceneCfg.recStart) + 1);
-    f = Number(sceneCfg.recStart) + ((S.t * S.fps) % len);
+    f = Number(sceneCfg.recStart) + ((tShow * S.fps) % len);
   }
   setSceneFrame(f);
-  applyCamBlender(drone.pos, camQuat(drone.q));
+  applyCamBlender(_dp, camQuat(_dq));
 }
 
 // ------------------------------------------------------------------ takes
@@ -459,21 +664,24 @@ const takesDir = () => (S.dir ? S.dir.replace(/[\\/]+$/, '') + '\\PRISES' : null
 
 async function finishTake() {
   S.recording = false;
-  const samples = S.samples; S.samples = [];
+  const raw = S.samples; S.samples = [];
   if (S.mode === 'FLY') S.mode = 'DONE';
-  if (samples.length < 2) return null;
+  if (raw.length < 2) return null;
+  const samples = smoothTake(raw, Number(settings.camSmooth));
   const num = S.takes.reduce((m, t) => Math.max(m, t.take || 0), 0) + 1;
   const cam = (settings.camName || 'CAM_FPV').replace(/[^\w\-]+/g, '_');
   const lens = lensFromHfov(Number(settings.hfov));
   const data = {
-    app: 'takumi-fpv-take', app_version: S.version || '', scene_name: S.info.name, scene_file: S.jsonPath || S.glbPath,
+    app: 'fpv-pilot-take', app_version: S.version || '', scene_name: S.info.name, scene_file: S.jsonPath || S.glbPath,
     camera_name: cam, take: num, fps: S.fps, frame_start: samples[0].f, frame_end: samples[samples.length - 1].f,
     lens: Math.round(lens * 1000) / 1000, sensor_width: 36, clip_start: Math.round(0.02 / mpu() * 1e4) / 1e4,
     clip_end: Math.round(Math.max(100, S.sceneSize * 4) * 100) / 100, meters_per_unit: mpu(),
     settings: { droneClass: settings.droneClass, flightMode: settings.flightMode, rates: [settings.rcRate, settings.superRate, settings.expo],
       hfov: Number(settings.hfov), camTilt: Number(settings.camTilt), horizonLock: Number(settings.horizonLock),
-      timeScale: Number(settings.timeScale), realism: settings.realism, turbulence: Number(settings.turbulence) },
+      timeScale: Number(settings.timeScale), realism: settings.realism, turbulence: Number(settings.turbulence),
+      rcSmooth: Number(settings.rcSmooth), camSmooth: Number(settings.camSmooth) },
     top_speed: Math.round(S.topSpeed * 10) / 10, keep: false, created: new Date().toISOString(), frames: samples,
+    ...(samples !== raw ? { frames_raw: raw } : {}),
   };
   const name = cam + '_prise_' + String(num).padStart(2, '0') + '.json';
   try {
@@ -651,7 +859,7 @@ function tick(dt) {
   switch (S.mode) {
     case 'COUNTDOWN': S.cd -= dt; if (S.cd <= 0) enterHold(); break;
     case 'HOLD': if (released(s)) release(s); break;
-    case 'FLY': case 'DONE': simulate(dt * Number(settings.timeScale), s); break;
+    case 'FLY': case 'DONE': { const t0 = performance.now(); simulate(dt * Number(settings.timeScale), s); if (perf.ph) perf.ph.sim += performance.now() - t0; break; }
     case 'REPLAY': replayTick(dt); break;
     default: break;
   }
@@ -660,10 +868,14 @@ function tick(dt) {
 }
 function loop(now) {
   requestAnimationFrame(loop);
-  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  const rawDt = (now - last) / 1000; last = now;
+  const dt = Math.min(0.1, rawDt);
+  perfTick(rawDt);
   if (!S.manual) tick(dt);
   renderer.toneMappingExposure = Number(settings.exposure);
+  const r0 = performance.now();
   renderer.render(scene, camera);
+  if (perf.ph) { perf.ph.render += performance.now() - r0; perf.ph.n++; }
 }
 
 // ------------------------------------------------------------------ radio UI
@@ -728,7 +940,7 @@ function updateRadioUI(s) {
 
 // ------------------------------------------------------------------ settings UI
 function syncSceneFields() {
-  $('mpu').value = sceneCfg.mpu; $('recStart').value = sceneCfg.recStart; $('recEnd').value = sceneCfg.recEnd;
+  $('mpu').value = Number(Number(sceneCfg.mpu).toPrecision(6)); $('recStart').value = sceneCfg.recStart; $('recEnd').value = sceneCfg.recEnd;
   scaleHint();
 }
 function scaleHint() {
@@ -747,13 +959,20 @@ function lensInfo() {
 function showVals() {
   document.querySelectorAll('.val').forEach((el) => {
     const id = el.dataset.for, v = Number(settings[id]);
-    el.textContent = id === 'hfov' || id === 'camTilt' ? v + '°' : id === 'exposure' ? v.toFixed(2) : Math.round(v * 100) + ' %';
+    el.textContent = id === 'hfov' || id === 'camTilt' ? v + '°' : id === 'exposure' ? v.toFixed(2)
+      : id === 'rcSmooth' ? Math.round(sticks.cutoff()) + ' Hz'
+        : id === 'camSmooth' ? (v > 0 ? Math.round(v * 300) + ' ms' : 'aucune') : Math.round(v * 100) + ' %';
+  });
+  // Blender-style sliders: the field fills up to the value
+  document.querySelectorAll('input[type=range]').forEach((el) => {
+    const p = (Number(el.value) - Number(el.min)) / Math.max(1e-9, Number(el.max) - Number(el.min));
+    el.style.setProperty('--p', (p * 100).toFixed(2) + '%');
   });
 }
 function bindSettings() {
   const cls = $('droneClass');
   for (const [k, c] of Object.entries(CLASSES)) cls.add(new Option(c.label, k));
-  const ids = ['droneClass', 'flightMode', 'rcRate', 'superRate', 'expo', 'throttleExpo', 'turbulence', 'realism', 'collisions',
+  const ids = ['droneClass', 'flightMode', 'rcRate', 'superRate', 'expo', 'throttleExpo', 'turbulence', 'rcSmooth', 'camSmooth', 'realism', 'collisions',
     'hfov', 'camTilt', 'horizonLock', 'exposure', 'quality', 'camName', 'timeScale', 'countdown', 'autoStop', 'autoAbc'];
   for (const id of ids) {
     const el = $(id);
@@ -824,6 +1043,17 @@ function onKey(e) {
 
 function bindUI() {
   window.addEventListener('keydown', onKey);
+  // Blender-style panels: click the header to fold / unfold (remembered)
+  let folded = {}; try { folded = JSON.parse(localStorage.getItem('fpvpilot.folded') || '{}'); } catch (e) { /* none */ }
+  document.querySelectorAll('#panel section > h2').forEach((h) => {
+    const key = h.firstChild.textContent.trim();
+    if (folded[key]) h.parentElement.classList.add('collapsed');
+    h.addEventListener('click', (e) => {
+      if (e.target !== h) return;
+      folded[key] = h.parentElement.classList.toggle('collapsed');
+      localStorage.setItem('fpvpilot.folded', JSON.stringify(folded));
+    });
+  });
   $('btnOpen').addEventListener('click', async (e) => { e.currentTarget.blur(); openPath(await host.pickScene()); });
   $('btnReexport').addEventListener('click', async (e) => {
     e.currentTarget.blur();
@@ -879,7 +1109,7 @@ function bindUI() {
     if (!f) return;
     const p = host.pathForFile(f);
     if (/\.json$/i.test(p)) {
-      try { const d = await host.readTake(p); if (d.app === 'takumi-fpv-take') { startReplay(d); return; } } catch (err) { /* scene */ }
+      try { const d = await host.readTake(p); if (/^(fpv-pilot|takumi-fpv)-take$/.test(d.app)) { startReplay(d); return; } } catch (err) { /* scene */ }
     }
     openPath(p);
   });
@@ -894,11 +1124,11 @@ async function selftest(args) {
   const i = args.indexOf('--selftest');
   const scenePath = args[i + 1], out = args[i + 2];
   const result = { ok: false, steps: [] };
-  const shot = async (name) => { renderer.render(scene, camera); await frames(2); const f = out + '\\' + name; await host.capture(f); result.steps.push(name); };
+  const shot = async (name) => { updateOSD(readSticks(0), 0); renderer.render(scene, camera); await frames(2); const f = out + '\\' + name; await host.capture(f); result.steps.push(name); };
   try {
     S.manual = true;
     Object.assign(settings, { timeScale: '1', countdown: '0', autoStop: true, autoAbc: true, collisions: true, realism: true,
-      turbulence: 0, flightMode: 'ANGLE', horizonLock: 0, hfov: 90, droneClass: 'WHOOP', camTilt: 12, throttleExpo: 0.3 });
+      turbulence: 0, rcSmooth: 0.35, camSmooth: 0.35, quality: 'auto', flightMode: 'ANGLE', horizonLock: 0, hfov: 90, droneClass: 'WHOOP', camTilt: 12, throttleExpo: 0.3 });
     await openPath(scenePath);
     if (!S.info) throw new Error('scene not loaded: ' + S.errors.join(' | '));
     sceneCfg.start = 0; goIdle();
@@ -912,7 +1142,7 @@ async function selftest(args) {
     camera.updateMatrixWorld();
     const pb = t2b(camera.position), qb = QCi.clone().multiply(camera.quaternion);
     const hf = 2 * Math.atan(Math.tan(camera.fov * DEG / 2) * camera.aspect) / DEG;
-    const calib = { app: 'takumi-fpv-take', camera_name: 'SELFTEST_CALIB', take: 0, fps: S.fps, frame_start: fmid, frame_end: fmid,
+    const calib = { app: 'fpv-pilot-take', camera_name: 'SELFTEST_CALIB', take: 0, fps: S.fps, frame_start: fmid, frame_end: fmid,
       lens: lensFromHfov(hf), sensor_width: 36, clip_start: 0.1, clip_end: 1000,
       frames: [{ f: fmid, p: [pb.x, pb.y, pb.z], q: [qb.w, qb.x, qb.y, qb.z] }] };
     await host.saveTake(out, 'selftest_calib.json', calib);
@@ -938,11 +1168,36 @@ async function selftest(args) {
     S.scripted = null;
     // replay of the take
     if (S.lastTake) { startReplay(await host.readTake(S.lastTake)); for (let k = 0; k < 30; k++) tick(1 / 60); await shot('app_replay.png'); }
-    result.ok = !!S.lastTake;
+    // fluidity in real time: 6 s of training flight through the normal loop (render + physics), frame times measured
+    goIdle(); S.manual = false;
+    S.scripted = (t) => ({ throttle: hov + 0.03, yaw: 0.25 * Math.sin(t * 0.8), pitch: 0.12, roll: 0.2 * Math.sin(t * 1.4), arm: null, source: 'script' });
+    beginRun(true); S.holdBase = { throttle: -1 };
+    await new Promise((r) => setTimeout(r, 1500));
+    perf.log = []; perf.ph = { sim: 0, anim: 0, render: 0, n: 0 };
+    await new Promise((r) => setTimeout(r, 6000));
+    const ph = perf.ph; perf.ph = null;
+    const ft = perf.log.slice().sort((a, b) => a - b); perf.log = null;
+    const pct = (p) => Math.round(ft[Math.min(ft.length - 1, Math.floor(ft.length * p))] * 10000) / 10;
+    result.perf = { frames: ft.length, fps: Math.round(ft.length / ft.reduce((a, b) => a + b, 0)), p50_ms: pct(0.5), p95_ms: pct(0.95),
+      max_ms: pct(1), scale: Math.round(qualityScale() * 100) / 100, pixels: renderer.domElement.width + 'x' + renderer.domElement.height,
+      ms_per_frame: { physics_incl_anim: +(ph.sim / ph.n).toFixed(2), anim: +(ph.anim / ph.n).toFixed(2), render_cpu: +(ph.render / ph.n).toFixed(2) },
+      drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
+    result.tracks = S.tracks;
+    // real GPU time of one image (render + wait for the GPU), at the measured scale and at full scale
+    const gl = renderer.getContext();
+    const gpuMs = async () => { const v = []; for (let k = 0; k < 20; k++) { const t0 = performance.now(); renderer.render(scene, camera); gl.finish(); v.push(performance.now() - t0); await tick0(); } v.sort((x, y) => x - y); return +v[10].toFixed(2); };
+    const keepQ = settings.quality;
+    result.perf.gpu_ms_at_scale = await gpuMs();
+    settings.quality = '1'; layout(); result.perf.gpu_ms_full = await gpuMs(); result.perf.pixels_full = renderer.domElement.width + 'x' + renderer.domElement.height;
+    settings.quality = keepQ; layout();
+    await shot('app_live.png');
+    S.scripted = null; S.manual = true; goIdle();
+    result.ok = !!S.lastTake && !S.ctxLost;
+    result.depth = { reversed: renderer.capabilities.reversedDepthBuffer, near: camera.near, far: camera.far };
   } catch (e) {
     result.error = String(e.stack || e);
   }
-  result.errors = S.errors;
+  result.errors = S.errors; result.gpu = gpuName; result.ctxLost = S.ctxLost || 0;
   await host.saveTake(out, 'selftest_result.json', result);
   host.quit(result.ok ? 0 : 1);
 }
@@ -957,6 +1212,17 @@ async function selftest(args) {
   S.version = await host.version();
   $('ver').textContent = 'v' + S.version;
   await findBlender();
+  // graphics card choice (applied at the next start)
+  const gp = await host.gpu();
+  $('gpuSel').value = gp.saved;
+  const gpuNote = () => { $('gpuInfo').textContent = 'En cours : ' + gpuName.replace(/^ANGLE \((.*?), (.*?) \(0x.*$/, '$2')
+    + ($('gpuSel').value !== gp.active ? ' · redémarre le logiciel pour changer' : ''); };
+  gpuNote();
+  $('gpuSel').addEventListener('change', async (e) => {
+    e.currentTarget.blur(); await host.gpu($('gpuSel').value); gpuNote();
+    if ($('gpuSel').value !== gp.active && !['FLY', 'HOLD', 'COUNTDOWN', 'DONE'].includes(S.mode)
+      && confirm('Redémarrer maintenant pour changer de carte graphique ?')) host.restart();
+  });
   const args = await host.args();
   if (args.includes('--selftest')) { selftest(args); return; }
   const file = args.find((a) => /\.(blend|json|glb)$/i.test(a));

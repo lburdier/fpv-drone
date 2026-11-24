@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Bridge with the stand-alone TAKUMI FPV app (2.16).
+"""Bridge with the stand-alone FPV Drone Pilot app (2.16, renamed in 2.17).
 
 * export_scene: the scene (meshes + animation, cameras / lights / the FPV rig left out) as a .glb, plus a .json
   with what the app needs: fps, frame range, render size, scale and the start points (the scene cameras).
@@ -13,8 +13,9 @@ import sys
 import bpy
 from mathutils import Matrix, Quaternion, Vector
 
-APP_SCENE = "takumi-fpv-scene"
-APP_TAKE = "takumi-fpv-take"
+APP_SCENE = "fpv-pilot-scene"
+APP_TAKE = "fpv-pilot-take"
+APP_TAKES = {APP_TAKE, "takumi-fpv-take"}      # takes written by the app before it was renamed
 TAKE_COLL = "FPV_Cameras"
 SKIP_COLLS = {"FPV_Drone", TAKE_COLL}
 
@@ -46,6 +47,53 @@ def _scene_mpu(sc):
         except Exception:
             v = 1.0
     return v * sc.unit_settings.scale_length
+
+
+def _viewport_color_materials():
+    """Materials with no shader plugged into their output are white in glTF, while Blender shows them with their viewport
+    display colour. For the export only, a Principled BSDF with that colour is plugged in; undone right after."""
+    undo = []
+    for m in bpy.data.materials:
+        if not m.users:
+            continue
+        nt = m.node_tree if getattr(m, "use_nodes", True) else None
+        out = nt.get_output_node('ALL') if nt else None
+        if out is not None and out.inputs['Surface'].is_linked:
+            continue
+        try:
+            was_nodes = getattr(m, "use_nodes", True)
+            if not was_nodes:
+                m.use_nodes = True
+            nt = m.node_tree
+            added = []
+            out = nt.get_output_node('ALL')
+            if out is None:
+                out = nt.nodes.new('ShaderNodeOutputMaterial'); added.append(out)
+            b = None
+            if out.inputs['Surface'].is_linked:            # use_nodes just created the default Principled
+                b = out.inputs['Surface'].links[0].from_node
+            else:
+                b = nt.nodes.new('ShaderNodeBsdfPrincipled'); added.append(b)
+                nt.links.new(b.outputs[0], out.inputs['Surface'])
+            if 'Base Color' in b.inputs:
+                b.inputs['Base Color'].default_value = tuple(m.diffuse_color)
+                b.inputs['Metallic'].default_value = m.metallic
+                b.inputs['Roughness'].default_value = m.roughness
+            undo.append((m, was_nodes, added))
+        except Exception as e:  # noqa: BLE001
+            print("FPV export: viewport colour not applied to", m.name, e)
+    return undo
+
+
+def _undo_viewport_materials(undo):
+    for m, was_nodes, added in undo:
+        try:
+            for n in added:
+                m.node_tree.nodes.remove(n)
+            if not was_nodes:
+                m.use_nodes = False
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def export_scene(context, glb_path, max_texture=2048, meters_per_unit=None, start_name=None):
@@ -81,6 +129,7 @@ def export_scene(context, glb_path, max_texture=2048, meters_per_unit=None, star
         except RuntimeError:
             pass
     frame = sc.frame_current
+    undo_mats = _viewport_color_materials()
     try:
         bpy.ops.export_scene.gltf(
             filepath=glb_path, export_format='GLB', use_selection=True, export_cameras=False, export_lights=False,
@@ -88,6 +137,7 @@ def export_scene(context, glb_path, max_texture=2048, meters_per_unit=None, star
             export_frame_range=True, export_anim_slide_to_zero=False, export_image_format='AUTO',
             export_yup=True, export_extras=False, export_materials='EXPORT')
     finally:
+        _undo_viewport_materials(undo_mats)
         for ob, sel in prev_sel.items():
             try:
                 ob.select_set(sel)
@@ -96,11 +146,13 @@ def export_scene(context, glb_path, max_texture=2048, meters_per_unit=None, star
         sc.frame_set(frame)
 
     cams = []
+    sc.frame_set(sc.frame_start)
     for ob in sc.objects:
         if ob.type == 'CAMERA' and not _skip(ob):
             d = ob.data
             cams.append({"name": ob.name, "matrix": _rows(ob.matrix_world), "lens": d.lens,
                          "sensor_width": d.sensor_width, "sensor_fit": d.sensor_fit})
+    sc.frame_set(frame)
     cams.sort(key=lambda c: (c["name"] != (sc.camera.name if sc.camera else ""), c["name"]))
     if start_name:
         cams.sort(key=lambda c: c["name"] != start_name)
@@ -112,7 +164,8 @@ def export_scene(context, glb_path, max_texture=2048, meters_per_unit=None, star
         "fps": _fps(sc), "frame_start": sc.frame_start, "frame_end": sc.frame_end,
         "resolution": [sc.render.resolution_x, sc.render.resolution_y],
         "meters_per_unit": mpu, "up": "Z", "cameras": cams,
-        "cursor": list(sc.cursor.location),
+        "cursor": list(sc.cursor.location), "max_texture": max_texture or 0,
+        "rev": 2,                      # 2: cameras at frame_start, viewport colours
     }
     jpath = os.path.splitext(glb_path)[0] + ".json"
     with open(jpath, "w", encoding="utf-8") as f:
@@ -123,8 +176,8 @@ def export_scene(context, glb_path, max_texture=2048, meters_per_unit=None, star
 def read_take(path):
     with open(bpy.path.abspath(path), encoding="utf-8") as f:
         take = json.load(f)
-    if take.get("app") != APP_TAKE:
-        raise RuntimeError("Not a TAKUMI FPV take (.json)")
+    if take.get("app") not in APP_TAKES:
+        raise RuntimeError("Not a FPV Drone Pilot take (.json)")
     if not take.get("frames"):
         raise RuntimeError("The take is empty")
     return take
@@ -248,10 +301,10 @@ def _cli(argv):
     if args.cmd == "export-scene":
         size, jpath = export_scene(bpy.context, args.out, max_texture=args.max_texture,
                                    meters_per_unit=args.mpu, start_name=args.start)
-        print("TAKUMI_OK", jpath, size, flush=True)
+        print("FPVPILOT_OK", jpath, size, flush=True)
     else:
         ob, f0, f1 = take_to_alembic(args.take, args.out, args.blend)
-        print("TAKUMI_OK", args.out, f0, f1, flush=True)
+        print("FPVPILOT_OK", args.out, f0, f1, flush=True)
 
 
 if __name__ == "__main__" and "--" in sys.argv:
@@ -260,5 +313,5 @@ if __name__ == "__main__" and "--" in sys.argv:
     except Exception as e:  # noqa: BLE001
         import traceback
         traceback.print_exc()
-        print("TAKUMI_ERROR", e, flush=True)
+        print("FPVPILOT_ERROR", e, flush=True)
         sys.exit(1)

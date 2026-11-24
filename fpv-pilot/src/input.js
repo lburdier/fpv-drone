@@ -19,12 +19,12 @@ const DEFAULT_MAP = {
 
 export function loadMap() {
   try {
-    const m = JSON.parse(localStorage.getItem('takumi.inputmap') || 'null');
+    const m = JSON.parse(localStorage.getItem('fpvpilot.inputmap') || 'null');
     if (m) return { ...structuredClone(DEFAULT_MAP), ...m };
   } catch (e) { /* ignore */ }
   return structuredClone(DEFAULT_MAP);
 }
-export function saveMap(m) { localStorage.setItem('takumi.inputmap', JSON.stringify(m)); }
+export function saveMap(m) { localStorage.setItem('fpvpilot.inputmap', JSON.stringify(m)); }
 export function resetMap() { const m = structuredClone(DEFAULT_MAP); saveMap(m); return m; }
 
 export function pads() {
