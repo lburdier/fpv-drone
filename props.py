@@ -367,6 +367,12 @@ class FPV_Settings(bpy.types.PropertyGroup):
                              description="Advance the scene frame while flying so animated objects move with you")
     extend_end: BoolProperty(name="Extend Frame Range", default=True)
     countdown: BoolProperty(name="Countdown", default=True)
+    # ---------------------------------------------------------------- camera hand-off (2.16)
+    export_name: StringProperty(name="Camera Name", default="CAM_01_FPV",
+                                description="Name of the exported camera (and of its .blend file)")
+    export_path: StringProperty(name="Export File", default="", subtype='FILE_PATH',
+                                description="Where to write the camera .blend. Empty = next to this .blend file, "
+                                            "named after the camera")
     # ---------------------------------------------------------------- performance
     perf_viewport: EnumProperty(name="Viewport While Flying", default='SOLID', items=[
         ('SOLID', "Fast (Solid)", "Switch the view to Solid while flying, restore afterwards. Smoothest"),

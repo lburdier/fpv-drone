@@ -1,0 +1,23 @@
+{
+  "name": "takumi-fpv",
+  "productName": "TAKUMI FPV",
+  "version": "1.0.0",
+  "description": "Simulateur FPV autonome : vole dans une scène Blender exportée et renvoie la caméra à Blender",
+  "main": "main.js",
+  "author": "Lucas",
+  "license": "GPL-3.0-or-later",
+  "scripts": {
+    "build": "npm run bridge && esbuild src/app.js --bundle --format=esm --target=chrome120 --outfile=dist/app.js",
+    "start": "npm run build && electron .",
+    "package": "npm run build && electron-packager . \"TAKUMI FPV\" --platform=win32 --arch=x64 --out=out --overwrite --asar --ignore=^/src --ignore=^/out --ignore=^/test",
+    "bridge": "node -e \"require('fs').mkdirSync('blender',{recursive:true});require('fs').copyFileSync('../appbridge.py','blender/takumi_bridge.py')\""
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "electron": "^45.3.4",
+    "esbuild": "^0.28.2",
+    "three": "^0.187.0",
+    "three-mesh-bvh": "^0.9.18"
+  },
+  "repository": "https://github.com/lburdier/fpv-drone"
+}

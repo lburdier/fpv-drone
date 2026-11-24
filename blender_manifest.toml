@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "fpv_drone"
-version = "2.15.0"
+version = "2.17.0"
 name = "FPV Drone"
 tagline = "Fly an FPV drone camera with a radio, gamepad, phone or keyboard"
 maintainer = "Lucas"
@@ -26,4 +26,4 @@ clipboard = "Copy the phone link and the Claude setup"
 files = "AI Link: writes its port / token and the MCP server to ~/.fpv_drone"
 
 [build]
-paths_exclude_pattern = ["__pycache__/", "/.git/", "/docs/", "*.zip"]
+paths_exclude_pattern = ["__pycache__/", "/.git/", "/docs/", "/takumi-fpv/", "*.zip"]

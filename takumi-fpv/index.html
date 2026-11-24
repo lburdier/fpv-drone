@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>TAKUMI FPV</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <aside id="panel">
+    <header class="brand"><span class="logo">TAKUMI</span><span class="sub">FPV</span><span id="ver"></span></header>
+
+    <section>
+      <h2>Scène</h2>
+      <button id="btnOpen" class="wide">Ouvrir une scène Blender (.blend)…</button>
+      <div id="sceneName" class="muted">Aucune scène. Ouvre ou glisse ici le .blend (ou une scène déjà exportée .json / .glb).</div>
+      <div class="row"><button id="btnReexport" title="Relance l'export depuis le .blend (après une modification de la scène)" disabled>Réimporter le .blend</button></div>
+      <label>Départ <select id="startSel"></select></label>
+      <div class="row"><button id="btnStartHere" title="Utilise la vue actuelle (vue libre) comme point de départ">Départ = vue actuelle</button></div>
+      <label>Échelle (mètres par unité) <input id="mpu" type="number" step="0.005" min="0.0001"></label>
+      <div id="scaleHint" class="muted small"></div>
+    </section>
+
+    <section>
+      <h2>Radio</h2>
+      <div id="padName" class="muted">Aucune manette détectée. Branche la radio en USB (mode Joystick) puis bouge un stick.</div>
+      <div id="chanList"></div>
+      <div class="row">
+        <button id="btnCal">Calibrer</button>
+        <button id="btnMapReset" title="Remet l'ordre AETR par défaut et efface la calibration">Réinitialiser</button>
+      </div>
+      <div id="calHint" class="hint hidden">Bouge <b>tous les sticks à fond dans tous les sens</b>, puis remets-les au centre (gaz où tu veux) et clique sur <b>Terminer</b>.</div>
+    </section>
+
+    <section>
+      <h2>Drone</h2>
+      <label>Type <select id="droneClass"></select></label>
+      <label>Mode <select id="flightMode"><option value="ACRO">Acro</option><option value="ANGLE">Angle (stabilisé)</option></select></label>
+      <div class="grid3">
+        <label>RC Rate <input id="rcRate" type="number" step="0.05" min="0.05" max="3"></label>
+        <label>Super Rate <input id="superRate" type="number" step="0.01" min="0" max="0.99"></label>
+        <label>Expo <input id="expo" type="number" step="0.01" min="0" max="1"></label>
+      </div>
+      <div id="rateInfo" class="muted small"></div>
+      <label>Expo des gaz <input id="throttleExpo" type="range" min="0" max="1" step="0.05"><span class="val" data-for="throttleExpo"></span></label>
+      <label>Turbulence <input id="turbulence" type="range" min="0" max="1" step="0.05"><span class="val" data-for="turbulence"></span></label>
+      <label class="check"><input id="realism" type="checkbox"> Physique réaliste (moteurs, prop-wash, traînée)</label>
+      <label class="check"><input id="collisions" type="checkbox"> Collisions avec la scène</label>
+    </section>
+
+    <section>
+      <h2>Caméra</h2>
+      <label>Champ horizontal <input id="hfov" type="range" min="40" max="140" step="1"><span class="val" data-for="hfov"></span></label>
+      <div id="lensInfo" class="muted small"></div>
+      <label>Uptilt <input id="camTilt" type="range" min="-10" max="60" step="1"><span class="val" data-for="camTilt"></span></label>
+      <label>Verrouillage d'horizon <input id="horizonLock" type="range" min="0" max="1" step="0.05"><span class="val" data-for="horizonLock"></span></label>
+      <label>Luminosité de l'aperçu <input id="exposure" type="range" min="0.3" max="3" step="0.05"><span class="val" data-for="exposure"></span></label>
+      <label>Qualité d'affichage <select id="quality"><option value="1">Normale</option><option value="0.75">Rapide</option><option value="0.5">Très rapide</option><option value="1.5">Haute</option></select></label>
+    </section>
+
+    <section>
+      <h2>Enregistrement</h2>
+      <label>Nom de la caméra <input id="camName" type="text"></label>
+      <div class="grid2">
+        <label>Image de début <input id="recStart" type="number" step="1"></label>
+        <label>Image de fin <input id="recEnd" type="number" step="1"></label>
+      </div>
+      <label>Ralenti <select id="timeScale"><option value="1">Temps réel</option><option value="0.75">×0,75</option><option value="0.5">×0,5</option><option value="0.25">×0,25</option></select></label>
+      <label>Décompte <select id="countdown"><option value="0">Aucun</option><option value="1">1 s</option><option value="3">3 s</option><option value="5">5 s</option></select></label>
+      <label class="check"><input id="autoStop" type="checkbox"> Arrêter la prise à l'image de fin</label>
+      <label class="check"><input id="autoAbc" type="checkbox"> Créer aussi l'Alembic (.abc) de chaque prise</label>
+      <button id="btnRec" class="rec wide">● VOLER + ENREGISTRER <kbd>Entrée</kbd></button>
+      <button id="btnTrain" class="wide">Vol d'entraînement <kbd>T</kbd></button>
+    </section>
+
+    <section>
+      <h2>Prises <button id="btnTakesDir" class="mini" title="Ouvrir le dossier des prises">📁</button></h2>
+      <div id="takes" class="muted">Aucune prise.</div>
+    </section>
+
+    <section>
+      <h2>Blender <button id="btnBlender" class="mini" title="Choisir blender.exe">Choisir…</button></h2>
+      <div id="blenderInfo" class="muted small">Recherche de Blender…</div>
+      <div id="blenderLog" class="muted small mono"></div>
+    </section>
+
+    <section class="help">
+      <h2>Touches</h2>
+      <p><kbd>Entrée</kbd> voler + enregistrer · <kbd>T</kbd> entraînement · <kbd>Échap</kbd> arrêter · <kbd>R</kbd> recommencer · <kbd>Tab</kbd> masquer le panneau · <kbd>F11</kbd> plein écran</p>
+      <p>Sans radio : <kbd>Z</kbd>/<kbd>W</kbd> <kbd>S</kbd> gaz · <kbd>Q</kbd>/<kbd>A</kbd> <kbd>D</kbd> lacet · flèches tangage / roulis · <kbd>Maj</kbd> à fond · <kbd>Ctrl</kbd> fin.</p>
+      <p>Vue libre (au repos) : clic gauche tourner, clic droit déplacer, molette zoom.</p>
+    </section>
+  </aside>
+
+  <main id="stage">
+    <div id="frame">
+      <canvas id="view"></canvas>
+      <div id="osd">
+        <div id="osdTL"></div>
+        <div id="osdTR"></div>
+        <div id="osdCenter"></div>
+        <div id="osdBL"></div>
+        <div id="osdBR"></div>
+        <canvas id="sticks" width="220" height="100"></canvas>
+      </div>
+      <div id="loading" class="hidden"><div class="spin"></div><div id="loadingText">Chargement…</div></div>
+      <div id="drop" class="hidden">Dépose la scène (.json ou .glb)</div>
+    </div>
+  </main>
+</div>
+<div id="toast"></div>
+<script type="module" src="dist/app.js"></script>
+</body>
+</html>

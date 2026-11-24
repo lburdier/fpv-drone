@@ -551,6 +551,22 @@ class FPV_PT_record(_Sub, bpy.types.Panel):
         else:
             _label(box, "Record a flight first (the sticks are saved with it)", 'INFO')
         box.operator("fpv.refly", text=T("Re-fly Take"), icon='FILE_REFRESH', translate=False)
+        draw_handoff_box(L.box(), s)
+
+
+def draw_handoff_box(box, s):
+    _label(box, "TAKUMI FPV app (pilot without Blender)", 'DESKTOP')
+    row = box.row(align=True)
+    row.operator("fpv.app_export_scene", text=T("Export Scene for the App"), icon='EXPORT', translate=False)
+    row = box.row(align=True)
+    row.operator("fpv.app_import_take", text=T("Import App Take"), icon='IMPORT', translate=False)
+    box.separator()
+    _label(box, "Send the camera back (pilot)", 'EXPORT')
+    box.prop(s, "export_name")
+    box.prop(s, "export_path")
+    box.operator("fpv.export_camera", text=T("Export Camera"), icon='OUTLINER_OB_CAMERA', translate=False)
+    _label(box, "Main project:", 'IMPORT')
+    box.operator("fpv.import_camera", text=T("Import Pilot Camera"), icon='IMPORT', translate=False)
 
 
 class FPV_PT_projectiles(_Sub, bpy.types.Panel):

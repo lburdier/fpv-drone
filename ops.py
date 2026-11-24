@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import os
 import time
 import bpy
 from . import inputs, session, hud, rig, phone, perf, optimize, collide, physcam, look, tune, i18n, updater, ai
-from . import smooth, refly, model, pathviz
+from . import smooth, refly, model, pathviz, handoff, appbridge
 from .i18n import T, CTX
 
 
@@ -300,6 +301,111 @@ class FPV_OT_clear_take(_Op, bpy.types.Operator):
         if cam:
             n += session.delete_keys_from(cam, s.record_start, {"rotation_euler"})
         self.report({'INFO'}, T("%d keys removed") % n)
+        return {'FINISHED'}
+
+
+class FPV_OT_export_camera(_Op, bpy.types.Operator):
+    """Bake the flown camera (one key per frame, world space, no parent) and save it alone in a small .blend to send back. The baked camera also stays in this file"""
+    bl_idname = "fpv.export_camera"
+    bl_label = "Export Camera"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return handoff.source_camera(context.scene.fpv) is not None and not context.window_manager.fpv_state.flying
+
+    def execute(self, context):
+        s = context.scene.fpv
+        path = s.export_path.strip() or handoff.default_export_path(s.export_name)
+        try:
+            ob, f0, f1, size = handoff.export_camera(context, s.export_name, path)
+        except Exception as e:
+            self.report({'ERROR'}, T(str(e)))
+            return {'CANCELLED'}
+        self.report({'INFO'}, T("Camera %s exported: frames %d-%d, %d KB -> %s") % (
+            ob.name, f0, f1, max(1, size // 1024), bpy.path.abspath(path)))
+        return {'FINISHED'}
+
+
+class FPV_OT_import_camera(_Op, bpy.types.Operator):
+    """Append a camera exported by a pilot (.blend) into this scene, at the exact place it was flown"""
+    bl_idname = "fpv.import_camera"
+    bl_label = "Import Pilot Camera"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    filepath: bpy.props.StringProperty(subtype='FILE_PATH')
+    filter_glob: bpy.props.StringProperty(default="*.blend", options={'HIDDEN'})
+    make_active: bpy.props.BoolProperty(name="Set as Scene Camera", default=True)
+    match_range: bpy.props.BoolProperty(name="Use Its Frame Range", default=False)
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        try:
+            cams, warn = handoff.import_camera(context, self.filepath, self.make_active, self.match_range)
+        except Exception as e:
+            self.report({'ERROR'}, T(str(e)))
+            return {'CANCELLED'}
+        for w in warn:
+            self.report({'WARNING'}, w)
+        self.report({'INFO'}, T("Imported: %s") % ", ".join(c.name for c in cams))
+        return {'FINISHED'}
+
+
+class FPV_OT_app_export_scene(_Op, bpy.types.Operator):
+    """Export this scene for the TAKUMI FPV app: a .glb (meshes, materials, animation) and a .json (frame range, fps, scale, start cameras). The pilot opens the .json in the app, no Blender needed"""
+    bl_idname = "fpv.app_export_scene"
+    bl_label = "Export Scene for the App"
+
+    filepath: bpy.props.StringProperty(subtype='FILE_PATH')
+    filter_glob: bpy.props.StringProperty(default="*.glb", options={'HIDDEN'})
+    max_texture: bpy.props.IntProperty(name="Max Texture Size", default=2048, min=256, max=8192,
+                                       description="Bigger textures are reduced in the export only (lighter, faster to load)")
+
+    def invoke(self, context, event):
+        if not self.filepath:
+            base = bpy.path.abspath("//") or os.path.expanduser("~")
+            name = bpy.path.display_name_from_filepath(bpy.data.filepath) or "scene"
+            self.filepath = os.path.join(base, "TAKUMI_FPV_" + name, name + ".glb")
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        try:
+            size, jpath = appbridge.export_scene(context, self.filepath, self.max_texture)
+        except Exception as e:
+            self.report({'ERROR'}, T(str(e)))
+            return {'CANCELLED'}
+        self.report({'INFO'}, T("Scene exported for the app: %d MB -> %s") % (max(1, size // 1048576), jpath))
+        return {'FINISHED'}
+
+
+class FPV_OT_app_import_take(_Op, bpy.types.Operator):
+    """Import a take flown in the TAKUMI FPV app (.json): a camera with one key per frame, at the exact place it was flown"""
+    bl_idname = "fpv.app_import_take"
+    bl_label = "Import App Take"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    filepath: bpy.props.StringProperty(subtype='FILE_PATH')
+    filter_glob: bpy.props.StringProperty(default="*.json", options={'HIDDEN'})
+    make_active: bpy.props.BoolProperty(name="Set as Scene Camera", default=True)
+    match_range: bpy.props.BoolProperty(name="Use Its Frame Range", default=False)
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        try:
+            ob, f0, f1, warn = appbridge.import_take(context, self.filepath, None, self.make_active, self.match_range)
+        except Exception as e:
+            self.report({'ERROR'}, T(str(e)))
+            return {'CANCELLED'}
+        for w in warn:
+            self.report({'WARNING'}, w)
+        self.report({'INFO'}, T("Imported: %s") % ("%s (%d-%d)" % (ob.name, f0, f1)))
         return {'FINISHED'}
 
 
@@ -1015,7 +1121,7 @@ class FPV_OT_update_page(_Op, bpy.types.Operator):
         return {'FINISHED'}
 
 
-classes = (FPV_OT_path_edit, FPV_OT_simplify_take, FPV_OT_smooth_take, FPV_OT_refly, FPV_OT_add_model, FPV_OT_add_course, FPV_OT_language, FPV_OT_update_check, FPV_OT_update_install, FPV_OT_update_page, FPV_OT_tune_blender, FPV_OT_untune_blender, FPV_OT_look_apply, FPV_OT_look_remove, FPV_OT_physcam_bake, FPV_OT_target_from_curve, FPV_OT_target_from_take, FPV_OT_target_new, FPV_OT_optimize, FPV_OT_restore, FPV_OT_phone_link, FPV_OT_phone_copy, FPV_OT_ai_link, FPV_OT_ai_copy, FPV_OT_fly, FPV_OT_create_rig, FPV_OT_reset, FPV_OT_clear_take, FPV_OT_start_here, FPV_OT_preset,
+classes = (FPV_OT_app_export_scene, FPV_OT_app_import_take, FPV_OT_export_camera, FPV_OT_import_camera, FPV_OT_path_edit, FPV_OT_simplify_take, FPV_OT_smooth_take, FPV_OT_refly, FPV_OT_add_model, FPV_OT_add_course, FPV_OT_language, FPV_OT_update_check, FPV_OT_update_install, FPV_OT_update_page, FPV_OT_tune_blender, FPV_OT_untune_blender, FPV_OT_look_apply, FPV_OT_look_remove, FPV_OT_physcam_bake, FPV_OT_target_from_curve, FPV_OT_target_from_take, FPV_OT_target_new, FPV_OT_optimize, FPV_OT_restore, FPV_OT_phone_link, FPV_OT_phone_copy, FPV_OT_ai_link, FPV_OT_ai_copy, FPV_OT_fly, FPV_OT_create_rig, FPV_OT_reset, FPV_OT_clear_take, FPV_OT_start_here, FPV_OT_preset,
            FPV_OT_monitor, FPV_OT_learn_axis)
 
 

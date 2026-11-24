@@ -1,4 +1,4 @@
-# FPV Drone 2.15.0 – extension Blender 4.2 → 5.x (testée 5.3)
+# FPV Drone 2.16.0 – extension Blender 4.2 → 5.x (testée 5.3)
 
 Pilote une caméra comme un drone FPV (radiocommande, manette ou clavier) et enregistre le vol en keyframes.
 Réécriture complète de *Quadcopter FPV Simulator* (WizardOfRobots, 2021), sous licence GPL-3.0-or-later.
@@ -40,6 +40,15 @@ Chaque schéma se replie (petit triangle) et l'icône 🖼 à côté de *FR / EN
 Vue à travers la caméra FPV pendant un vol enregistré : mode et gaz, vitesse et altitude, sticks, enregistrement (REC), images par seconde et camera culling.
 
 ![OSD pendant le vol](docs/osd.png)
+
+## Nouveautés 2.17
+- **TAKUMI FPV ouvre directement le `.blend`** : le logiciel lance Blender en arrière-plan pour exporter la scène (cache dans `TAKUMI_FPV/` à côté du fichier, refait seulement si le `.blend` change). L'échelle (mètres par unité) réglée dans l'addon est reprise, même sans l'addon installé chez le pilote.
+- **Alembic** : chaque prise peut aussi être écrite en `.abc` (caméra seule, une clé par image, même focale). Dans Blender : *Fichier › Importer › Alembic (.abc)*, ou *Importer une prise du logiciel* avec le `.json`. Les deux donnent exactement le même mouvement.
+- Le script `appbridge.py` se lance aussi en ligne de commande (`export-scene`, `take-to-abc`).
+
+## Nouveautés 2.16
+- **Logiciel TAKUMI FPV** (pilote sans Blender) : *Exporter la scène pour le logiciel* écrit un `.glb` (objets, matériaux, animation de la scène ; textures réduites à 2048 px dans l'export seulement) et un `.json` (images, i/s, résolution, échelle, caméras de départ). Le pilote l'ouvre dans TAKUMI FPV, vole à la radio, et chaque prise est un `.json` (une position et une rotation par image, en coordonnées monde Blender). *Importer une prise du logiciel* en fait une caméra avec une clé par image.
+- **Renvoyer la caméra du pilote** (panneau *Enregistrement*, en bas) : un pilote vole sur une copie de la scène, puis **Exporter la caméra** fige la caméra pilotée (une clé par image, en coordonnées monde, sans parent, même objectif) et l'enregistre seule dans un petit `.blend` de quelques Ko (par défaut à côté du fichier, au nom de la caméra, ex. `CAM_01_FPV.blend`). Dans le projet principal, **Importer la caméra du pilote** l'ajoute dans la collection *FPV_Cameras*, exactement là où elle a volé, et peut en faire la caméra de la scène. Sans l'addon : *Fichier › Ajouter (Append) › CAM_01_FPV.blend › Object*.
 
 ## Nouveautés 2.15
 - **Pilote IA (Claude)** : Claude peut piloter le drone dans Blender grâce au serveur MCP fourni (`mcp_server.py`, Python standard, aucune dépendance). Le *lien IA* s'ouvre tout seul avec Blender (127.0.0.1 seulement, protégé par un jeton ; désactivable dans les préférences). Une seule fois : `claude mcp add fpv-drone --scope user -- python "%USERPROFILE%\.fpv_drone\mcp_server.py"` (bouton de copie dans le panneau *Pilote IA*, et un autre pour Claude Desktop). Ensuite, demande simplement à Claude : « décolle et avance de 20 m », « fais le tour du cube », « montre-moi ce que voit la caméra ».
